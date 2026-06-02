@@ -1,0 +1,361 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Dark is the default theme — the `dark` class is set on <html> before React
+   mounts (see index.html). Light is opt-in via the toggle and stored in
+   localStorage. Tokens follow the shadcn/ui HSL convention. */
+@layer base {
+  :root,
+  .dark {
+    --background: 222 22% 7%;
+    --foreground: 210 20% 96%;
+    --card: 222 20% 9%;
+    --card-foreground: 210 20% 96%;
+    --popover: 222 20% 11%;
+    --popover-foreground: 210 20% 96%;
+    --muted: 222 14% 16%;
+    --muted-foreground: 215 15% 65%;
+    --accent: 222 14% 18%;
+    --accent-foreground: 210 20% 96%;
+    --primary: 210 100% 66%;
+    --primary-foreground: 222 22% 7%;
+    --secondary: 222 14% 14%;
+    --secondary-foreground: 210 20% 96%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 20% 96%;
+    --border: 222 14% 18%;
+    --input: 222 14% 14%;
+    --ring: 210 100% 66%;
+  }
+
+  .light {
+    --background: 0 0% 100%;
+    --foreground: 222 22% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 22% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 22% 10%;
+    --muted: 210 16% 95%;
+    --muted-foreground: 215 15% 42%;
+    --accent: 210 16% 93%;
+    --accent-foreground: 222 22% 10%;
+    --primary: 210 100% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 16% 96%;
+    --secondary-foreground: 222 22% 10%;
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 20% 88%;
+    --input: 214 20% 92%;
+    --ring: 210 100% 50%;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Tiptap editor prose styles. `.tiptap-prose` is set on the
+     contenteditable via editorProps.attributes. Markdown is the source of
+     truth — these rules only control how the WYSIWYG inside the editor looks. */
+  .tiptap-prose {
+    font-size: 15px;
+    line-height: 1.65;
+    color: hsl(var(--foreground));
+    caret-color: hsl(var(--primary));
+  }
+  .tiptap-prose:focus {
+    outline: none;
+  }
+  .tiptap-prose > * + * {
+    margin-top: 0.75em;
+  }
+  /* Heading sizes intentionally modest — Apple Notes / Bear style. The
+     editor base is 15px so the hierarchy stays readable without any heading
+     dwarfing the body text. */
+  .tiptap-prose h1 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    line-height: 1.3;
+    margin-top: 1em;
+    letter-spacing: -0.01em;
+  }
+  .tiptap-prose h2 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    line-height: 1.35;
+    margin-top: 0.9em;
+    letter-spacing: -0.005em;
+  }
+  .tiptap-prose h3 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.4;
+    margin-top: 0.8em;
+  }
+  .tiptap-prose strong {
+    font-weight: 700;
+  }
+  .tiptap-prose em {
+    font-style: italic;
+  }
+  .tiptap-prose s {
+    text-decoration: line-through;
+    color: hsl(var(--muted-foreground));
+  }
+  .tiptap-prose a {
+    color: hsl(var(--primary));
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .tiptap-prose code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.9em;
+    background: hsl(var(--muted));
+    padding: 0.1em 0.35em;
+    border-radius: 0.25rem;
+  }
+  .tiptap-prose pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.9em;
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
+    padding: 0.85rem 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+  }
+  .tiptap-prose pre code {
+    background: transparent;
+    padding: 0;
+    font-size: inherit;
+  }
+  .tiptap-prose blockquote {
+    border-left: 3px solid hsl(var(--border));
+    padding-left: 1rem;
+    color: hsl(var(--muted-foreground));
+  }
+  .tiptap-prose ul,
+  .tiptap-prose ol {
+    padding-left: 1.35rem;
+  }
+  .tiptap-prose ul {
+    list-style: disc;
+  }
+  .tiptap-prose ol {
+    list-style: decimal;
+  }
+  .tiptap-prose li > p {
+    margin: 0;
+  }
+  .tiptap-prose li + li {
+    margin-top: 0.25em;
+  }
+  .tiptap-prose hr {
+    border: none;
+    border-top: 1px solid hsl(var(--border));
+    margin: 1.5em 0;
+  }
+  /* Task list (GFM checkboxes). */
+  .tiptap-prose ul[data-type='taskList'] {
+    list-style: none;
+    padding-left: 0.25rem;
+  }
+  .tiptap-prose ul[data-type='taskList'] li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  .tiptap-prose ul[data-type='taskList'] li > label {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 0.3rem;
+  }
+  .tiptap-prose ul[data-type='taskList'] li > label input[type='checkbox'] {
+    width: 0.95rem;
+    height: 0.95rem;
+    accent-color: hsl(var(--primary));
+    cursor: pointer;
+  }
+  .tiptap-prose ul[data-type='taskList'] li > div {
+    flex: 1;
+    min-width: 0;
+  }
+  .tiptap-prose ul[data-type='taskList'] li[data-checked='true'] > div {
+    color: hsl(var(--muted-foreground));
+    text-decoration: line-through;
+  }
+  /* Empty-doc placeholder (Placeholder extension). Works on both the default
+     empty paragraph and the empty H1 node used for new notes. */
+  .tiptap-prose p.is-editor-empty:first-child::before,
+  .tiptap-prose h1.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    color: hsl(var(--muted-foreground));
+    pointer-events: none;
+    height: 0;
+  }
+  /* Hide the trailing empty paragraph that Tiptap adds after the initial
+     empty H1 node — avoids the visual "two blank lines" on new notes.
+     Tiptap puts `is-editor-empty` on the H1 first-child, not on the root,
+     so we target the sibling `<p>` that immediately follows it. */
+  .tiptap-prose > h1.is-editor-empty:first-child + p:last-child:has(> br:only-child) {
+    display: none;
+  }
+
+  /* Tables — Tiptap @tiptap/extension-table renders standard <table>.
+     Round-trips to GFM markdown via tiptap-markdown's serializer. Column
+     resize is on; row height isn't configurable because GFM can't store it
+     (rows auto-grow with content). The wrapping div .tableWrapper keeps
+     overflow-x: auto as a last-resort safety for the case where the user
+     manually drags columns wider than the container — but in normal use
+     `width: 100%` + `table-layout: fixed` + per-cell `word-break` keeps
+     everything inside the container with no horizontal scroll needed. */
+  .tiptap-prose .tableWrapper {
+    overflow-x: auto;
+    margin: 0.75rem 0;
+    /* Cap to the editor's content width so a Tiptap-set inline
+       `min-width` on the table can't push the wrapper wider than the
+       prose column. */
+    max-width: 100%;
+  }
+  .tiptap-prose table {
+    border-collapse: collapse;
+    width: 100%;
+    table-layout: fixed; /* shares container width across columns; required for column-resize */
+    /* Defeat Tiptap's inline `min-width: <n>px` (sum of per-column
+       min-widths) — without this, a 10-col table forces a horizontal
+       scroll even though the columns themselves would happily shrink. */
+    min-width: 0 !important;
+  }
+  .tiptap-prose table td,
+  .tiptap-prose table th {
+    border: 1px solid hsl(var(--border));
+    padding: 0.45rem 0.6rem;
+    vertical-align: top;
+    position: relative;
+    box-sizing: border-box;
+    /* Long words / URLs wrap inside the cell instead of forcing the
+       column wider. `anywhere` (vs `break-word`) handles unbroken
+       strings like base64 / SHA hashes / URLs without horizontal scroll. */
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .tiptap-prose table th {
+    background: hsl(var(--muted) / 0.5);
+    font-weight: 600;
+    text-align: left;
+  }
+  .tiptap-prose table .selectedCell {
+    background: hsl(var(--accent) / 0.6);
+  }
+  /* Column resize handle — provided by Tiptap as a 4px strip on the
+     right edge of every cell. Always interactive (pointer-events: auto)
+     so the cursor changes to col-resize on hover; visible on table hover
+     so the user can SEE the grab affordance. Without `cursor` directly
+     on the handle, the browser shows the default text cursor and users
+     don't realise columns are draggable (regression report from
+     ticket 01KQFJF60F3F2TYHQ8D8M0GEA5 dogfood). */
+  .tiptap-prose table .column-resize-handle {
+    position: absolute;
+    right: -2px;
+    top: 0;
+    bottom: -2px;
+    width: 4px;
+    background: hsl(var(--primary) / 0.6);
+    cursor: col-resize;
+    pointer-events: auto;
+    opacity: 0;
+    transition: opacity 120ms;
+  }
+  .tiptap-prose table:hover .column-resize-handle,
+  .tiptap-prose .resize-cursor table .column-resize-handle {
+    opacity: 1;
+  }
+  .tiptap-prose .resize-cursor,
+  .tiptap-prose .resize-cursor * {
+    cursor: col-resize !important;
+  }
+
+  /* Chat message prose — the markdown bodies in Ask Mo go through
+     `renderCommentMarkdown` which emits standard <p>/<h3>/<ul>/<blockquote>.
+     Tailwind preflight zeroes margins on those by default + we don't ship
+     `@tailwindcss/typography` (the `prose-sm` class on the message wrapper
+     is a no-op). Without these rules headings + paragraphs visually butt
+     against each other — see Mo cleanup escalation dogfood report
+     2026-05-04. Scoped to direct children so nested lists / blockquotes
+     keep their own balance. */
+  .mo-chat-prose > * + * {
+    margin-top: 0.6em;
+  }
+  .mo-chat-prose > h1,
+  .mo-chat-prose > h2,
+  .mo-chat-prose > h3 {
+    font-weight: 600;
+    line-height: 1.35;
+    margin-top: 1em;
+    margin-bottom: 0.25em;
+  }
+  .mo-chat-prose > h1 {
+    font-size: 1.15rem;
+  }
+  .mo-chat-prose > h2 {
+    font-size: 1.05rem;
+  }
+  .mo-chat-prose > h3 {
+    font-size: 0.98rem;
+  }
+  .mo-chat-prose > blockquote {
+    border-left: 2px solid hsl(var(--border));
+    padding-left: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    font-style: italic;
+  }
+  .mo-chat-prose > ul,
+  .mo-chat-prose > ol {
+    padding-left: 1.25rem;
+  }
+  .mo-chat-prose > ul {
+    list-style: disc;
+  }
+  .mo-chat-prose > ol {
+    list-style: decimal;
+  }
+  .mo-chat-prose code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.9em;
+    background: hsl(var(--muted));
+    padding: 0.1em 0.3em;
+    border-radius: 0.25rem;
+  }
+  .mo-chat-prose > :first-child {
+    margin-top: 0;
+  }
+  .mo-chat-prose > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+/* Conflict-region decorations for Monaco editor in ConflictResolverModal.
+   Highlighted via createDecorationsCollection with the appropriate
+   className per region. Inactive regions get a subtle tint; the
+   region the user is currently focused on (regionIdx) gets a
+   stronger highlight. */
+.conflict-region {
+  background: rgba(245, 158, 11, 0.12); /* amber-500 / 0.12 */
+}
+.conflict-region-active {
+  background: rgba(245, 158, 11, 0.25);
+  border-left: 2px solid rgba(245, 158, 11, 0.9);
+}
+.conflict-region-glyph::before {
+  content: '⚠';
+  color: rgba(245, 158, 11, 0.9);
+  margin-left: 4px;
+}

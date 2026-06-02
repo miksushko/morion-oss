@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # better-sqlite3 + sqlite-vec ship prebuilt binaries for linux-x64 /
+      # node 20, so `npm ci` does not normally compile. If a future dep
+      # needs a native build, ubuntu-latest already has build-essential.
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm run build
+
+      # binary-smoke.test.ts auto-skips when dist-bin/ is absent (the
+      # packaged binary is a desktop-only artifact, not built here), so the
+      # browser-local test suite runs green without it.
+      - run: npm test

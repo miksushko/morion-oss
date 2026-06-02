@@ -1,0 +1,17 @@
+node_modules/
+dist/
+dist-bin/
+dist-mcpb/
+data/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+.vite/
+coverage/
+.tsbuildinfo
+.mcp.json
+# Auto-code harness artifacts (created in target repos / when running locally)
+.morion/
+.morion-harness.lock

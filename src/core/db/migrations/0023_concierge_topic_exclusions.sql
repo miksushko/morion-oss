@@ -1,0 +1,21 @@
+-- Mo Indexing — per-folder Tier 1 topic exclusions.
+--
+-- Ticket: 01KQKDWH9CB7S4N0CKQ1DM8S9Q
+--
+-- Free-text per-folder list of generic terms / phrases the user does
+-- NOT want Tier 1 to use as topic / cluster ids. Industry-generic words
+-- vary per project: for "Morion Features" the user excludes "task
+-- management", "project management", "agile", "workflow management"
+-- (generic productivity vocabulary that doesn't help retrieval) but
+-- keeps "kanban" (a concrete product feature). For a different folder
+-- the exclusion list looks different.
+--
+-- Stored as one TEXT blob — UI presents a textarea, the prompt builder
+-- inlines it verbatim into the system prompt. No per-line schema; we
+-- trust the user to write it in a way the LLM understands.
+--
+-- Defaults: empty string. Tier 1 prompt only adds the exclusion block
+-- when the field is non-empty, so pre-existing folders behave exactly
+-- as before this migration.
+
+ALTER TABLE concierge_folder_settings ADD COLUMN topic_exclusions TEXT NOT NULL DEFAULT '';

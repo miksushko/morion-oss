@@ -1,0 +1,34 @@
+-- Project Brief digest — per-source cursors with id tie-break.
+--
+-- Codex review caught two P1 holes in the round-1 truncation fix
+-- (`01KQ1H5F80V4P4RKEJVQ5XSFQV`):
+--
+--   1. Mixed-source truncation. With independent per-source caps, the
+--      single shared checkpoint (max ts of included events) skipped
+--      the deferred tail of any source whose lastIncludedTs was below
+--      another source's lastIncludedTs. e.g. mo messages overflow at
+--      ts 2199, comments fully read up to ts 3009 → checkpoint = 3009
+--      → next digest reads `created_at > 3009` → mo 2200..2249 lost.
+--
+--   2. Same-timestamp boundary. `LIMIT cap` with `ts > checkpoint` and
+--      checkpoint = max(included.ts) loses any rows that share that
+--      timestamp but didn't fit in the page. SQL has no stable
+--      tie-break without an id-based cursor.
+--
+-- Fix: per-source cursors, each as a (ts, id) tuple. Stored as a JSON
+-- blob so this migration is one column, not six. NULL on rows that
+-- predate the column — engine falls back to the legacy `checkpoint_at`
+-- semantics for that case so existing folders keep working.
+--
+-- Cursor JSON shape (parsed in `FolderBriefsRepository.getCursors`):
+--   {
+--     "notes":    {"ts": 1234, "id": "01K..."},
+--     "comments": {"ts": 1234, "id": "01K..."},
+--     "mo":       {"ts": 1234, "id": "01K..."}
+--   }
+-- Each per-source cursor is independently optional. A null sub-cursor
+-- means "fall back to checkpoint_at for this source" — handles the
+-- post-migration first-digest where we have legacy `checkpoint_at`
+-- but no per-source data yet.
+
+ALTER TABLE folder_briefs ADD COLUMN cursors TEXT;
