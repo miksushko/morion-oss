@@ -85,3 +85,63 @@ describe('resolveMoIndexingProvider — pipeline overrides', () => {
     expect(r!.tier2FallbackModel).toBe('custom-tier2-fb');
   });
 });
+
+describe('resolveMoIndexingProvider — non-OpenRouter backends', () => {
+  // Non-OpenRouter backends have NO built-in model defaults: tier1 + tier2
+  // must be set explicitly. Without them the resolver returns null even
+  // when a key is configured (surfaces as mo_provider_unconfigured).
+  function openaiHost(extra: Record<string, unknown>) {
+    const data: Record<string, unknown> = {
+      'concierge.backend': 'openai',
+      'concierge.openai_api_key': 'sk-test-openai',
+      ...extra,
+    };
+    return {
+      settings: {
+        get: <T,>(key: string, fallback?: T): T =>
+          key in data ? (data[key] as T) : (fallback as T),
+      },
+      concierge: { providerOverride: undefined },
+    } as unknown as Parameters<typeof resolveMoIndexingProvider>[0];
+  }
+
+  it('returns null when tier1 / tier2 are unset (no built-in defaults)', () => {
+    expect(resolveMoIndexingProvider(openaiHost({}))).toBeNull();
+  });
+
+  it('returns null with only tier1 set (tier2 still missing)', () => {
+    expect(
+      resolveMoIndexingProvider(
+        openaiHost({ 'concierge.openai_tier1_model': 'gpt-4o-mini' }),
+      ),
+    ).toBeNull();
+  });
+
+  it('resolves once tier1 + tier2 are both set; no hardcoded OR ids leak', () => {
+    const r = resolveMoIndexingProvider(
+      openaiHost({
+        'concierge.openai_tier1_model': 'gpt-4o-mini',
+        'concierge.openai_tier2_model': 'gpt-4o',
+      }),
+    );
+    expect(r).not.toBeNull();
+    expect(r!.tier1Model).toBe('gpt-4o-mini');
+    expect(r!.tier2Model).toBe('gpt-4o');
+    // Empty fallbacks → single-attempt mode (null, not an OpenRouter id).
+    expect(r!.tier1FallbackModel).toBeNull();
+    expect(r!.tier2FallbackModel).toBeNull();
+    // Topic hygiene falls back to the resolved tier2 model.
+    expect(r!.topicHygieneModel).toBe('gpt-4o');
+  });
+
+  it('returns null when the API key is missing', () => {
+    const r = resolveMoIndexingProvider(
+      openaiHost({
+        'concierge.openai_api_key': '',
+        'concierge.openai_tier1_model': 'gpt-4o-mini',
+        'concierge.openai_tier2_model': 'gpt-4o',
+      }),
+    );
+    expect(r).toBeNull();
+  });
+});

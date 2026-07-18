@@ -1,3 +1,5 @@
+import { mkdirSync } from 'node:fs';
+
 import type Database from 'better-sqlite3';
 
 import { openDb } from '../../src/core/db/client.js';
@@ -40,6 +42,13 @@ export const TICKET_BODY =
   'Acceptance criteria: 10×20 grid, 7 tetrominoes, arrow controls.';
 export const REPO_PATH = '/tmp/morion-test-repo';
 export const TRANSCRIPT_DIR = '/tmp/morion-test-transcripts';
+
+// Admission validates that the linked repo path exists on disk before
+// claiming a run (so a deleted/moved repo rejects cleanly instead of
+// failing later with a cryptic `spawn git ENOENT`). Materialise the
+// stub repo dir so the happy-path suites pass that gate — git itself
+// is never invoked (ensureWorktree is stubbed in buildOrchestrator).
+mkdirSync(REPO_PATH, { recursive: true });
 
 export interface Ctx {
   db: Database.Database;

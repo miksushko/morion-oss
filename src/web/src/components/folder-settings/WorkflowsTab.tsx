@@ -9,8 +9,8 @@ import { FolderWorkflowsSection } from './auto-code/FolderWorkflowsSection';
  * on the Auto-code tab; this tab is purely list + create / edit /
  * more-menu mutations on the workflow definitions themselves.
  *
- * Gating mirrors the Auto-code tab: Pro-only feature + greyed when the
- * folder is hidden from Mo (no Mo, no auto-code).
+ * Gating mirrors the Auto-code tab: greyed when the folder is hidden
+ * from Mo (no Mo, no auto-code).
  *
  * Ticket: 01KRYB4RV660RREP8XHNPT651B
  */

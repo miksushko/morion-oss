@@ -120,6 +120,14 @@ export interface MergeResolverModels {
   fallbackModel: string;
 }
 
+/** Model picks for the `mo_build_workflow` drafting pipeline (Mo
+ *  Workflows epic). Same primary/fallback
+ *  contract as MergeResolverModels: empty fallback = single-attempt. */
+export interface WorkflowBuilderModels {
+  primaryModel: string;
+  fallbackModel: string;
+}
+
 export interface GatherModels {
   /** Wave 1+2 sub-Mo workers. */
   subagentModel: string;

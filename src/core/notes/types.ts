@@ -198,6 +198,12 @@ export const tasksListFiltersSchema = z.object({
   status: noteStatusSchema.optional(),
   since: z.number().int().optional(),
   until: z.number().int().optional(),
+  /** By default exclude `mo:*` system notes (catalog / cluster / risks /
+   *  patrol-log) — they're machine-readable indices, not kanban cards, and
+   *  on a Mo-indexed folder they otherwise flood `tasks_list` and drown the
+   *  real tasks. Parallels `noteListFiltersSchema.includeMoSystem`. Set true
+   *  only for debugging / power-user views. */
+  includeMoSystem: z.boolean().optional(),
   limit: z.number().int().min(1).max(500).default(200),
 });
 export type TasksListFilters = z.infer<typeof tasksListFiltersSchema>;

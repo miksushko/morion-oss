@@ -75,7 +75,7 @@ export function FolderTree({
   onRenameFolder: (id: string, name: string) => Promise<void> | void;
   onDeleteFolder: (
     id: string,
-    opts?: { purgeNotes?: boolean },
+    opts?: { keepNotes?: boolean },
   ) => Promise<void> | void;
   onDuplicateFolder: (id: string) => Promise<void> | void;
   onMoveFolder: (id: string, direction: 'up' | 'down') => Promise<void> | void;
@@ -161,14 +161,13 @@ export function FolderTree({
         if (f.noteCount > 0) {
           const result = await confirm({
             title: `Delete folder "${f.name}"?`,
-            description:
-              'By default, notes inside survive — they become unfiled and stay in the workspace.',
+            description: `The ${noteWord} will be moved to Trash (restorable).`,
             confirmLabel: 'Delete folder',
             destructive: true,
-            checkbox: { label: `Also move ${noteWord} to Trash` },
+            checkbox: { label: 'Keep notes instead (leave them unfiled)' },
           });
           if (result.confirmed)
-            await onDeleteFolder(f.id, { purgeNotes: result.checkboxChecked });
+            await onDeleteFolder(f.id, { keepNotes: result.checkboxChecked });
         } else {
           const ok = await confirm({
             title: `Delete folder "${f.name}"?`,

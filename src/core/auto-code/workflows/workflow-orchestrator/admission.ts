@@ -6,6 +6,7 @@
  * so it can read deps + tuning knobs without becoming a class method —
  * see workflow-orchestrator.ts header for the pattern.
  */
+import { existsSync } from 'node:fs';
 import { LinearWorkflowError, parseRunnableWorkflow } from '../parse-linear.js';
 import type { TicketContext } from '../runner.js';
 import type { WorkflowDefinition } from '../types/index.js';
@@ -13,6 +14,7 @@ import type { WorkflowOrchestrator as WO } from '../workflow-orchestrator.js';
 import { buildHooks } from './hooks.js';
 import { collectRequiredAgents } from './helpers.js';
 import type { EnqueueOutcome } from './types.js';
+import { buildPriorRunsBlock } from '../prior-runs.js';
 import { buildRecentCommentsBlock, makeAttachedHandle } from './escalation.js';
 
 export async function enqueueTicket(orch: WO, taskId: string, folderId: string): Promise<EnqueueOutcome> {
@@ -37,6 +39,21 @@ export async function enqueueTicket(orch: WO, taskId: string, folderId: string):
   }
   if (!settings.linkedRepoPath) {
     return { kind: 'rejected', reason: 'linked_repo_missing' };
+  }
+  // Validate the repo path EXISTS on disk before claiming a run row /
+  // spawning git. Without this, a folder whose linked repo was moved
+  // or deleted reaches `git worktree add` with a non-existent `cwd`,
+  // and Node's spawn reports the cryptic `spawn git ENOENT` (it names
+  // the command, not the missing cwd) — which reads as "git isn't
+  // installed" when git is fine. Reject cleanly with the path instead.
+  if (!existsSync(settings.linkedRepoPath)) {
+    return {
+      kind: 'rejected',
+      reason: 'linked_repo_missing',
+      missingDetails: [
+        `linked repo path does not exist on disk: ${settings.linkedRepoPath}`,
+      ],
+    };
   }
 
   // Pre-runner dedupe runs FIRST — before the stale-enqueue gate.
@@ -76,13 +93,17 @@ export async function enqueueTicket(orch: WO, taskId: string, folderId: string):
   // pre-runner dedupe ran, this cap measures DISTINCT active
   // tickets only — a re-enqueue against the same ticket already
   // returned via the deduped path above.
+  // Per-folder override (migration 0042) wins over the workspace
+  // default. NULL = use the workspace default the orchestrator was
+  // constructed with.
+  const cap = settings.autoCodeConcurrency ?? orch.maxInflightPerFolder;
   const inflight = orch.deps.runsRepo.countActiveRunsInFolder(folderId);
-  if (inflight >= orch.maxInflightPerFolder) {
+  if (inflight >= cap) {
     return {
       kind: 'rejected',
       reason: 'folder_cap_exceeded',
       missingDetails: [
-        `folder already has ${inflight} active runs (cap ${orch.maxInflightPerFolder})`,
+        `folder already has ${inflight} active runs (cap ${cap})`,
       ],
     };
   }
@@ -128,6 +149,12 @@ export async function enqueueTicket(orch: WO, taskId: string, folderId: string):
     title: task.title,
     body: task.body ?? '',
     recentComments: buildRecentCommentsBlock(orch, taskId),
+    // Cross-run memory ("Mo = router, not narrator"): deterministic
+    // digest of this
+    // ticket's previous terminal runs — reject reasons, verdicts,
+    // diffstats, transcript pointers. Empty string on the first run
+    // so {{ticket.priorRuns}} renders nothing.
+    priorRuns: buildPriorRunsBlock(orch.deps.runsRepo, taskId),
   };
 
   // Compute a fresh worktree path. Snapshotted on the workflow_run
@@ -269,8 +296,16 @@ export async function enqueueTicket(orch: WO, taskId: string, folderId: string):
     const detail = cancelledDuringAdmission
       ? 'cancelRequested flag was set during ensureWorktree (toggle-off / cancelTicket)'
       : `ticket status changed to "${refreshedTask?.status ?? '<deleted>'}" during worktree setup`;
+    // Only a real cancel (cancelRequested) records status='cancelled'.
+    // `ticketLeftTodo` is a stale / raced enqueue — the ticket moved on
+    // (a sibling run took it, the user re-dragged it, a prior run's
+    // fail→backlog cleanup fired). Recording THAT as 'cancelled' is the
+    // bug the user saw: tickets "become Cancelled" though nobody
+    // cancelled them and the agent never ran. Mark it 'failed' with the
+    // ticket_no_longer_todo reason so it reads as a superseded admission,
+    // not a user cancellation. Bug 2026-07-14.
     orch.deps.runsRepo.updateRun(claim.run.id, {
-      status: 'cancelled',
+      status: cancelledDuringAdmission ? 'cancelled' : 'failed',
       finishedAt: Date.now(),
       lastError: `${reason}: ${detail}`,
     });

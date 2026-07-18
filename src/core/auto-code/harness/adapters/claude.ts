@@ -170,6 +170,18 @@ class ClaudeAgentHandle extends AbstractAgentHandle {
       tools,
       '--permission-mode',
       'acceptEdits',
+      // Isolate MCP: without this, the spawned claude inherits the
+      // operator's global `~/.claude.json` + the worktree's project
+      // config and tries to connect to EVERY configured MCP server
+      // (figma / gmail / supabase / …). In a headless worktree those
+      // interactive/auth servers hang at startup — claude sits for
+      // minutes producing no output, then exits 1 (cost $0, before any
+      // model turn). Under a parallel ticket fan-out this fails most
+      // runs non-deterministically. Auto-code agents use built-in tools
+      // only (DEFAULT_ALLOWED_TOOLS has no `mcp__*`), so we want zero
+      // MCP servers: `--strict-mcp-config` with no `--mcp-config` means
+      // "ignore all inherited MCP config".
+      '--strict-mcp-config',
     );
     if (p.model) {
       args.push('--model', p.model);

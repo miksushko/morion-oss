@@ -27,6 +27,7 @@
  * normal chat loop (Mo couldn't decide, exception thrown, etc.).
  */
 import { buildAutoCodeDispatcher } from '../../../features/auto-code-factory/index.js';
+import { collectVerbatimUserReply } from '../../../../core/auto-code/workflows/human-gate-verbatim.js';
 import type {
   ConciergeMessage,
   ConciergeSession,
@@ -183,11 +184,18 @@ export async function tryWorkflowResume({
         };
       }
       // action === 'resume' → fire the actual workflow resume.
-      // `resumeSummary` is the actionable context for the next
-      // mo_stage; fall back to user-facing message if (for whatever
-      // reason) Mo didn't emit a summary.
+      // "Mo = router, not narrator":
+      // the reopen context is the user's OWN words, verbatim — every
+      // user message in this gate session, concatenated. Mo's
+      // `resumeSummary` used to REPLACE the user's reply here, dropping
+      // the exact details the agent needs. Mo now only classified the
+      // action (reply / resume) and wrote the user-facing ack above;
+      // the summary is no longer the payload.
+      const verbatimReply = collectVerbatimUserReply(chatHistory);
       const reopenContext =
-        decision.resumeSummary ?? decision.userMessage;
+        verbatimReply.length > 0
+          ? verbatimReply
+          : (decision.resumeSummary ?? decision.userMessage);
       const dispatcher = await buildAutoCodeDispatcher(ctx);
       if (dispatcher.resumeFromHumanGate) {
         void dispatcher.resumeFromHumanGate({

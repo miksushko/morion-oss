@@ -137,6 +137,75 @@ describe('runAutoCodeEnqueueTick', () => {
     expect(summary.rejected).toEqual({ preflight_blocked: 1 });
   });
 
+  it('anti-strand: transient ticket_no_longer_todo on a still-todo card holds the checkpoint, next tick retries + enqueues', async () => {
+    const ctx = setup();
+    const t1 = ctx.notes.create(
+      { body: '# T1', folderId: ctx.enabledFolderId, source: 'user' },
+      'user',
+    );
+    ctx.notes.moveToKanban(t1.id, 'todo', null, 'user'); // card is (and stays) in todo
+
+    let call = 0;
+    const { dispatcher, calls } = buildStubDispatcher(() => {
+      call += 1;
+      // First attempt loses a toggle race; the card is back in todo by
+      // the time the tick re-checks, so it must be retried — not stranded.
+      return call === 1
+        ? { kind: 'rejected' as const, reason: 'ticket_no_longer_todo' }
+        : { kind: 'enqueued' as const, runId: 'r1' };
+    });
+
+    const first = await runAutoCodeEnqueueTick({
+      db: ctx.db,
+      workspaceSettings: ctx.settings,
+      buildDispatcher: async () => dispatcher,
+    });
+    expect(first.enqueued).toBe(0);
+    expect(first.rejected).toEqual({ ticket_no_longer_todo: 1 });
+
+    // Checkpoint was held below the row → the next tick re-reads the SAME
+    // row and this time succeeds. Without the fix the card would be
+    // stranded in todo forever (checkpoint already past its only row).
+    const second = await runAutoCodeEnqueueTick({
+      db: ctx.db,
+      workspaceSettings: ctx.settings,
+      buildDispatcher: async () => dispatcher,
+    });
+    expect(second.enqueued).toBe(1);
+    expect(calls.map((c) => c.noteId)).toEqual([t1.id, t1.id]);
+  });
+
+  it('anti-strand does NOT hold when the card genuinely left todo (no infinite re-read)', async () => {
+    const ctx = setup();
+    const t1 = ctx.notes.create(
+      { body: '# T1', folderId: ctx.enabledFolderId, source: 'user' },
+      'user',
+    );
+    ctx.notes.moveToKanban(t1.id, 'todo', null, 'user');
+    ctx.notes.moveToKanban(t1.id, 'backlog', null, 'user'); // moved out for good
+
+    const { dispatcher, calls } = buildStubDispatcher(() => ({
+      kind: 'rejected' as const,
+      reason: 'ticket_no_longer_todo',
+    }));
+    const first = await runAutoCodeEnqueueTick({
+      db: ctx.db,
+      workspaceSettings: ctx.settings,
+      buildDispatcher: async () => dispatcher,
+    });
+    expect(first.rejected).toEqual({ ticket_no_longer_todo: 1 });
+
+    // Card is in backlog now → checkpoint advances past the row → the
+    // next tick sees nothing (no perpetual re-processing).
+    const second = await runAutoCodeEnqueueTick({
+      db: ctx.db,
+      workspaceSettings: ctx.settings,
+      buildDispatcher: async () => dispatcher,
+    });
+    expect(second.audited).toBe(0);
+    expect(calls).toHaveLength(1);
+  });
+
   it('does not re-build dispatcher when zero audit rows match', async () => {
     const ctx = setup();
     let dispatcherBuilds = 0;

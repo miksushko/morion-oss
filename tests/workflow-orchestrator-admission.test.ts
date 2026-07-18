@@ -88,7 +88,7 @@ describe('WorkflowOrchestrator — Codex T7.B.2.x atomic-admission regressions',
     await Promise.all([a.handle.awaitTerminal(), b.handle.awaitTerminal()]);
   });
 
-  it('status changes during ensureWorktree → run cancelled, worktree cleaned, kanban untouched', async () => {
+  it('status changes during ensureWorktree → run FAILED (not cancelled), worktree cleaned, kanban untouched', async () => {
     const ctx = setupForAdmission();
     let claudeSpawned = 0;
     let cleanupCalls = 0;
@@ -133,11 +133,14 @@ describe('WorkflowOrchestrator — Codex T7.B.2.x atomic-admission regressions',
     expect(cleanupCalls).toBe(1);
     // Card stays where the user put it.
     expect(ctx.notes.getById(ctx.ticketId)?.status).toBe('backlog');
-    // The claimed run row is marked cancelled (not failed) so it
-    // doesn't poison the per-folder cap or look like a real failure.
+    // Bug fix 2026-07-14: a ticket that LEFT todo during admission is a
+    // stale / superseded enqueue — nobody cancelled it. Recording it as
+    // 'cancelled' was the bug (tickets "became Cancelled" though the
+    // agent never ran). It's now 'failed' with the ticket_no_longer_todo
+    // reason; 'cancelled' is reserved for a real cancelRequested (P1.3).
     const runs = ctx.runsRepo.listRunsForTicket(ctx.ticketId);
     expect(runs).toHaveLength(1);
-    expect(runs[0].status).toBe('cancelled');
+    expect(runs[0].status).toBe('failed');
     expect(runs[0].lastError).toMatch(/ticket_no_longer_todo/);
   });
 

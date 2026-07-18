@@ -17,11 +17,9 @@ import { registerUsageRoutes } from './concierge/usage.js';
 /**
  * Direction V — Concierge HTTP surface (Phase V4).
  *
- * Pro-gated at every mutation + Launch. Reads (settings, sessions,
- * messages, budget) stay open on Free so a Free user can see what the
- * feature would give them without hitting 402 on passive GET. The tier
- * check short-circuits to a `pro_required` envelope that matches the
- * kanban-quota + license-activate shape the UI already knows.
+ * Free and open: all routes are open (the product carries no paid
+ * tier). Mo still needs a per-folder opt-in + a configured provider
+ * key — those gates live in the handlers, not here.
  *
  * Provider wiring: the active backend lives in `concierge.backend`.
  * Each backend gets its own key + model settings so a Kimi model

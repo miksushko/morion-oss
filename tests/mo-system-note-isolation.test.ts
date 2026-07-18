@@ -317,6 +317,49 @@ describe('Bug 01KQKESWXPYV73V9FE614Q51HQ — mo:* system notes never pollute top
     expect(provider.calls).toHaveLength(0);
   });
 
+  it('listKanban: excludes mo:* system notes by default, includes them only with includeMoSystem', () => {
+    // The kanban read path (tasks_list + the UI board) was the one
+    // list()-style read missing the mo-system filter, so agents got
+    // machine indices mixed into their task list on a Mo-indexed folder.
+    const folder = ctx.folders.create('K');
+    const realTask = ctx.notes.create(
+      { body: longBody('a real todo'), folderId: folder.id, source: 'user' },
+      'user',
+    );
+    ctx.notes.moveToKanban(realTask.id, 'todo', null, 'user');
+
+    // mo:* system notes via direct INSERT — one in the `note` column,
+    // one parked in a manual-order column — both must stay invisible.
+    const now = Date.now();
+    for (const [id, title, source, status] of [
+      ['MOCAT01', 'mo:catalog', 'mo:catalog', 'note'],
+      ['MORISK1', 'mo:risks', 'mo:risks', 'todo'],
+    ] as const) {
+      ctx.handle.db
+        .prepare(
+          `INSERT INTO notes (id, folder_id, title, body, pinned, source, created_at, updated_at, deleted_at, status, position)
+           VALUES (?, ?, ?, ?, 0, ?, ?, ?, NULL, ?, NULL)`,
+        )
+        .run(id, folder.id, title, longBody(title), source, now, now, status);
+    }
+
+    const def = ctx.notes.listKanban({ folderId: folder.id, limit: 500 });
+    expect(def.map((n) => n.id)).toEqual([realTask.id]);
+    expect(def.some((n) => n.source?.startsWith('mo:'))).toBe(false);
+
+    // Narrowing to a single column must ALSO exclude mo:* (the `todo`
+    // mo:risks note must not leak alongside the real todo).
+    const todoOnly = ctx.notes.listKanban({ folderId: folder.id, status: 'todo', limit: 500 });
+    expect(todoOnly.map((n) => n.id)).toEqual([realTask.id]);
+
+    // Power-user / debug opt-in surfaces them again.
+    const withSystem = ctx.notes.listKanban({ folderId: folder.id, includeMoSystem: true, limit: 500 });
+    const ids = withSystem.map((n) => n.id);
+    expect(ids).toContain(realTask.id);
+    expect(ids).toContain('MOCAT01');
+    expect(ids).toContain('MORISK1');
+  });
+
   it('migration 0026: purges existing note_mo_clusters / note_mo_metadata rows for mo:* notes (sanity check)', () => {
     // openDb runs migrations including 0026 on init; so the only way
     // to verify the cleanup is to fabricate a row with INSERT after

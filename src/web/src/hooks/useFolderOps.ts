@@ -69,12 +69,12 @@ export function useFolderOps(args: {
   );
 
   const deleteFolder = useCallback(
-    async (id: string, opts: { purgeNotes?: boolean } = {}) => {
+    async (id: string, opts: { keepNotes?: boolean } = {}) => {
       await api.deleteFolder(id, opts);
       setFolders((cur) => cur.filter((f) => f.id !== id));
-      // Without purgeNotes: notes are unfiled (folderId = null), survive.
-      // With purgeNotes: notes are soft-deleted (deleted_at set), still
-      // restorable from Trash.
+      // Default: notes are soft-deleted (deleted_at set) with the folder —
+      // restorable from Trash. With keepNotes: notes are unfiled
+      // (folderId = null) and survive in the workspace.
       if (selectedFolderId === id) setSelectedFolderId(undefined);
       refreshNotes().catch(console.error);
     },

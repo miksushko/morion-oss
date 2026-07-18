@@ -97,7 +97,7 @@ export const moAskTool = defineTool({
       return {
         error: 'mo_provider_unconfigured',
         message:
-          'Mo provider is not configured. Set OpenRouter as the active backend with a key in Settings → Mo to enable mo_ask.',
+          'Mo provider is not configured. In Settings → Mo, select a backend and add its key, then set the pipeline tier1 + tier2 models (OpenRouter ships built-in defaults; other backends need them set explicitly) to enable mo_ask.',
       };
     }
     const models = resolveGatherModels(host);

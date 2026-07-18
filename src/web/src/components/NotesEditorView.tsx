@@ -184,7 +184,7 @@ export function NotesEditorView(props: NotesEditorViewProps) {
             const ok = await confirm({
               title: `Delete folder "${f.name}"?`,
               description:
-                'Notes inside will become unfiled (move to Trash via the per-note menu first if you want them gone too).',
+                'Notes inside will be moved to Trash with it (restorable). Use the folder’s sidebar menu if you want to keep them instead.',
               confirmLabel: 'Delete folder',
               destructive: true,
             });

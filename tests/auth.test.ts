@@ -45,10 +45,9 @@ function buildAppWithAuth(): ReturnType<typeof buildHttpApp> {
   const embeddings = new NoopEmbeddings();
   const search = new HybridSearch(handle.db, fts, vec, embeddings);
   const indexer = new Indexer(vec, embeddings);
-  // settings + audit became required by the v0.98 license/permission
-  // routes, and by the 2026-04-16 N2 fix that gates the notes count
-  // through `isPro(ctx.settings)`. Tests that predate those changes
-  // worked by accident — pass them through for completeness.
+  // settings + audit became required by the permission routes. Tests
+  // that predate that change worked by accident — pass them through
+  // for completeness.
   const settings = new SettingsRepository(handle.db);
   const attachments = new AttachmentsRepository(handle.db);
   const comments = new NoteCommentsRepository(handle.db);

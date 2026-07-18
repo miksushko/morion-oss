@@ -7,6 +7,9 @@ interface Row {
   // Auto-code Phase 1 (migration 0020). NULL on legacy rows.
   linked_repo_path: string | null;
   auto_code_enabled: number;
+  // Per-folder concurrency cap (migration 0042). NULL on legacy rows =
+  // use the workspace default (MAX_INFLIGHT_PER_FOLDER).
+  auto_code_concurrency: number | null;
   // Mo Indexing topic-exclusions (migration 0023). Empty string on legacy rows.
   topic_exclusions: string;
   created_at: number;
@@ -19,6 +22,7 @@ function rowToSettings(row: Row): ConciergeFolderSettings {
     enabled: row.enabled === 1,
     linkedRepoPath: row.linked_repo_path,
     autoCodeEnabled: row.auto_code_enabled === 1,
+    autoCodeConcurrency: row.auto_code_concurrency ?? null,
     topicExclusions: row.topic_exclusions ?? '',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -31,6 +35,7 @@ export function defaultSettings(folderId: string, now: number): ConciergeFolderS
     enabled: false,
     linkedRepoPath: null,
     autoCodeEnabled: false,
+    autoCodeConcurrency: null,
     topicExclusions: '',
     createdAt: now,
     updatedAt: now,
@@ -47,6 +52,10 @@ export interface FolderSettingsPatch {
    * `linkedRepoPath` is null on the resulting state (rejected with
    * `linked_repo_required`). */
   autoCodeEnabled?: boolean;
+  /** Per-folder concurrency cap. Pass a positive integer to override
+   * the workspace default; pass `null` to clear back to the default.
+   * The route validates the bounds before persisting. */
+  autoCodeConcurrency?: number | null;
   /** Mo Indexing — free-text generic-terms blocklist for Tier 1.
    * Empty string clears it (no per-folder rules; only the workspace
    * category rules apply). Trimmed by the caller (route layer). */
@@ -109,13 +118,14 @@ export class ConciergeFolderSettingsRepository {
         .prepare(
           `UPDATE concierge_folder_settings SET
              enabled = ?, linked_repo_path = ?, auto_code_enabled = ?,
-             topic_exclusions = ?, updated_at = ?
+             auto_code_concurrency = ?, topic_exclusions = ?, updated_at = ?
            WHERE folder_id = ?`,
         )
         .run(
           next.enabled ? 1 : 0,
           next.linkedRepoPath,
           next.autoCodeEnabled ? 1 : 0,
+          next.autoCodeConcurrency,
           next.topicExclusions,
           next.updatedAt,
           folderId,
@@ -125,14 +135,15 @@ export class ConciergeFolderSettingsRepository {
         .prepare(
           `INSERT INTO concierge_folder_settings (
              folder_id, enabled, linked_repo_path, auto_code_enabled,
-             topic_exclusions, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+             auto_code_concurrency, topic_exclusions, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           next.folderId,
           next.enabled ? 1 : 0,
           next.linkedRepoPath,
           next.autoCodeEnabled ? 1 : 0,
+          next.autoCodeConcurrency,
           next.topicExclusions,
           next.createdAt,
           next.updatedAt,

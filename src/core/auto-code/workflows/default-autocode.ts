@@ -75,6 +75,24 @@ interface BuildV2TemplateOpts {
    *  mo_after_review decision node with approve/reopen/reject branches;
    *  when absent the fix-stage advances directly to mo_tools. */
   readonly reviewAgent?: V2AgentSpec;
+  /** Optional post-review documentation stage (Mo Workflows epic —
+   *  "fix + review + docs" flow). Runs
+   *  after mo_after_review approves; its own `mo_after_docs` decision
+   *  node can advance, reopen the docs agent, or reject. Requires
+   *  `reviewAgent` — ignored without one (the shipped flows always
+   *  review before documenting). */
+  readonly docsAgent?: V2AgentSpec;
+  /** Mo's instruction for the post-docs decision. Ignored when
+   *  docsAgent is absent. Defaults to a sensible advance/reopen/reject
+   *  instruction. */
+  readonly afterDocsInstruction?: string;
+  /** Optional post-docs QA stage ("fix + review + docs + qa" flow) —
+   *  writes functional tests (playwright specs or a manual checklist)
+   *  validating the change through the UI. Requires `docsAgent`. */
+  readonly qaAgent?: V2AgentSpec;
+  /** Mo's instruction for the post-QA decision. Ignored when qaAgent
+   *  is absent. */
+  readonly afterQaInstruction?: string;
   /** Mo's Process Start prompt — typically a one-sentence eligibility
    *  rule the user can edit ("is the ticket detailed enough", "does
    *  it have acceptance criteria", etc.). */
@@ -134,12 +152,15 @@ const DEFAULT_COMPLETE_COMMENT = '';
  * `mo_after_fix`, `review`, `mo_after_review`, `mo_tools`,
  * `reject_terminal`, `complete_terminal`. A pre-fix `plan` stage
  * appears when planAgent is set, with a `mo_after_plan` decision
- * node between plan and fix.
+ * node between plan and fix. Post-review `docs` / `mo_after_docs`
+ * and `qa` / `mo_after_qa` appear when docsAgent / qaAgent are set.
  */
 export function buildAutocodeV2Template(opts: BuildV2TemplateOpts): WorkflowDefinition {
   const hasPlan = !!opts.planAgent;
   const hasPlanReview = !!opts.planReviewAgent && hasPlan;
   const hasReview = !!opts.reviewAgent;
+  const hasDocs = !!opts.docsAgent && hasReview;
+  const hasQa = !!opts.qaAgent && hasDocs;
 
   const cliAgentStage = (
     id: string,
@@ -290,9 +311,59 @@ export function buildAutocodeV2Template(opts: BuildV2TemplateOpts): WorkflowDefi
       postComment: true,
       allowedTools: [],
     });
-    edges.push({ from: 'mo_after_review', to: 'mo_tools', on: 'approve' });
+    edges.push({
+      from: 'mo_after_review',
+      to: hasDocs ? 'docs' : 'mo_tools',
+      on: 'approve',
+    });
     edges.push({ from: 'mo_after_review', to: 'fix', on: 'reopen' });
     edges.push({ from: 'mo_after_review', to: 'reject_terminal', on: 'reject' });
+  }
+
+  if (hasDocs) {
+    // docs — post-review documentation agent. Same reopen shape as
+    // the code-review loop (mo_after_docs reopen → docs) so the
+    // runner's cap logic applies uniformly.
+    stages.push(cliAgentStage('docs', opts.docsAgent!));
+    edges.push({ from: 'docs', to: 'mo_after_docs', on: 'success' });
+    const docsAdvance = hasQa ? 'qa' : 'finish';
+    stages.push({
+      id: 'mo_after_docs',
+      kind: 'mo_stage',
+      instruction:
+        opts.afterDocsInstruction ??
+        `Read the docs-stage summary. Pick "${docsAdvance}" when the documentation updates match what shipped (or the agent correctly concluded no docs are affected). Pick "reopen" when the docs are wrong / incomplete and another pass could fix them. Pick "reject" when the stage failed outright.`,
+      branches: [docsAdvance, 'reopen', 'reject'],
+      postComment: true,
+      allowedTools: [],
+    });
+    edges.push({
+      from: 'mo_after_docs',
+      to: hasQa ? 'qa' : 'mo_tools',
+      on: docsAdvance,
+    });
+    edges.push({ from: 'mo_after_docs', to: 'docs', on: 'reopen' });
+    edges.push({ from: 'mo_after_docs', to: 'reject_terminal', on: 'reject' });
+
+    if (hasQa) {
+      // qa — functional-test agent (playwright specs or a manual
+      // checklist validating the change through the UI).
+      stages.push(cliAgentStage('qa', opts.qaAgent!));
+      edges.push({ from: 'qa', to: 'mo_after_qa', on: 'success' });
+      stages.push({
+        id: 'mo_after_qa',
+        kind: 'mo_stage',
+        instruction:
+          opts.afterQaInstruction ??
+          'Read the QA-stage summary. Pick "finish" when the functional tests exist and cover the acceptance criteria. Pick "reopen" when coverage has concrete gaps another pass could close. Pick "reject" when the stage failed outright.',
+        branches: ['finish', 'reopen', 'reject'],
+        postComment: true,
+        allowedTools: [],
+      });
+      edges.push({ from: 'mo_after_qa', to: 'mo_tools', on: 'finish' });
+      edges.push({ from: 'mo_after_qa', to: 'qa', on: 'reopen' });
+      edges.push({ from: 'mo_after_qa', to: 'reject_terminal', on: 'reject' });
+    }
   }
 
   // mo_tools — record result via MCP.
@@ -328,7 +399,7 @@ export function buildAutocodeV2Template(opts: BuildV2TemplateOpts): WorkflowDefi
   });
 }
 
-const DEFAULT_FIX_PROMPT = [
+export const DEFAULT_FIX_PROMPT = [
   'You are working on Morion ticket "{{ticket.title}}" ({{ticket.id}}).',
   '',
   'Acceptance criteria + recent context follow. Write a diff that fully',
@@ -356,16 +427,24 @@ const DEFAULT_FIX_PROMPT = [
   '--- Recent comments ---',
   '{{ticket.recentComments}}',
   '',
+  '--- Previous auto-code runs of this ticket ---',
+  '{{ticket.priorRuns}}',
+  '',
   '{{reopen.reason}}',
 ].join('\n');
 
-const DEFAULT_REVIEW_PROMPT = [
+export const DEFAULT_REVIEW_PROMPT = [
   'You are reviewing the work done by the previous "fix" stage of',
   'ticket "{{ticket.title}}" ({{ticket.id}}).',
   '',
   'Fix-stage summary:',
   '```',
   '{{stages.fix.output.summary}}',
+  '```',
+  '',
+  'Files the fix stage changed (git diff --stat):',
+  '```',
+  '{{stages.fix.output.diffstat}}',
   '```',
   '',
   'Read the actual files in this worktree to verify the diff. Then',

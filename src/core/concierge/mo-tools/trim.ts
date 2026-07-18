@@ -149,6 +149,61 @@ export function trimEnvelopeToFit(
     return envelope;
   }
 
+  // mo_build_workflow: the drafted WorkflowDefinition carries long
+  // promptTemplate strings (multi-KB per cli_agent stage) that can
+  // blow the budget. Falling through to the generic stub would lose
+  // the ENTIRE draft — the human could never review or approve it
+  // (the CLAUDE.md "synthesis-style tools never hit payload_too_large"
+  // invariant). Trim strategy: keep the graph intact (ids, kinds,
+  // agents, branches, edges — what the human actually reviews) and
+  // shorten each stage's long text fields with an explicit marker.
+  // The chat flow must then re-draft or fetch prompts another way
+  // before write — the marker makes the truncation impossible to miss.
+  if (
+    toolName === 'mo_build_workflow' &&
+    data &&
+    typeof data === 'object' &&
+    'definition' in (data as object)
+  ) {
+    const env = data as Record<string, unknown>;
+    const definition = env.definition as {
+      stages?: Array<Record<string, unknown>>;
+    } & Record<string, unknown>;
+    const shortenStage = (
+      stage: Record<string, unknown>,
+      cap: number,
+    ): Record<string, unknown> => {
+      const out: Record<string, unknown> = { ...stage };
+      for (const key of ['promptTemplate', 'instruction', 'agentInstruction']) {
+        const v = out[key];
+        if (typeof v === 'string' && v.length > cap) {
+          out[key] = `${v.slice(0, cap)}… [truncated for chat — ${v.length} chars total]`;
+        }
+      }
+      return out;
+    };
+    const buildEnvelope = (cap: number) => ({
+      ok: true,
+      data: {
+        ...env,
+        definition: {
+          ...definition,
+          stages: (definition.stages ?? []).map((s) => shortenStage(s, cap)),
+        },
+        promptsTruncatedForChat: true,
+      },
+    });
+    let cap = 400;
+    let envelope = buildEnvelope(cap);
+    let envelopeJson = JSON.stringify(envelope);
+    for (let pass = 0; pass < 8 && envelopeJson.length > maxBytes && cap > 20; pass++) {
+      cap = Math.max(20, Math.floor(cap / 2));
+      envelope = buildEnvelope(cap);
+      envelopeJson = JSON.stringify(envelope);
+    }
+    return envelope;
+  }
+
   // notes_get: single Note with full body. Cap body to fit. Iterative
   // because JSON escape inflation (e.g. \n→\\n, non-ASCII) makes a
   // single-shot calculation unreliable — measure, shrink, re-measure.

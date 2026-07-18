@@ -18,6 +18,12 @@ export const folderSettingsSchema = z.object({
   // see the PUT handler. `null` clears the link.
   linkedRepoPath: z.string().min(1).max(4_096).nullable().optional(),
   autoCodeEnabled: z.boolean().optional(),
+  // Per-folder cap on concurrent in-flight auto-code runs. Real column
+  // on `concierge_folder_settings` (migration 0040) — flows straight to
+  // the repo update. `null` clears back to the workspace default
+  // (MAX_INFLIGHT_PER_FOLDER). Bounded to keep a typo from spawning an
+  // unbounded number of agent worktrees.
+  autoCodeConcurrency: z.number().int().min(1).max(20).nullable().optional(),
   // Per-folder workflow template id. Validated against the templates
   // registry; unknown ids 422. Lives in workspace settings KV (not
   // the folder_settings table) so no migration was needed —

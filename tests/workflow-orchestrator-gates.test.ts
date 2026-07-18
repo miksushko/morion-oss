@@ -55,6 +55,22 @@ describe('WorkflowOrchestrator — gates', () => {
     if (out.kind === 'rejected') expect(out.reason).toBe('linked_repo_missing');
   });
 
+  it('rejects when linkedRepoPath is set but does not exist on disk (cryptic spawn-git-ENOENT guard)', async () => {
+    const ctx = setup();
+    ctx.folderSettings.update(ctx.folderId, {
+      enabled: true,
+      autoCodeEnabled: true,
+      linkedRepoPath: '/tmp/morion-test-repo-deleted-does-not-exist',
+    });
+    const orch = buildOrchestrator(ctx);
+    const out = await orch.enqueueTicket(ctx.ticketId, ctx.folderId);
+    expect(out.kind).toBe('rejected');
+    if (out.kind === 'rejected') {
+      expect(out.reason).toBe('linked_repo_missing');
+      expect(out.missingDetails?.join(' ')).toContain('does not exist on disk');
+    }
+  });
+
   it('rejects when preflight has blocking issues', async () => {
     const ctx = setup();
     ctx.folderSettings.update(ctx.folderId, {

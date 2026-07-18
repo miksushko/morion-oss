@@ -51,8 +51,16 @@ describe('preflight — binary detection', () => {
   });
 
   it('detectCodexBin without codex on PATH returns ready=false with non-blocking error copy', () => {
+    // Only assert the NOT-FOUND copy when the host genuinely has no
+    // codex on PATH. Two other legitimate states short-circuit:
+    //   - a working codex → ready=true;
+    //   - a BROKEN codex (e.g. the `node_modules/.bin/codex` shim when
+    //     the AV quarantine-deletes @openai/codex's vendored binary —
+    //     real incident 2026-07-08 on the dev machine) → ready=false
+    //     with the "located but `--version` failed" copy, which is
+    //     correct detection but not this test's contract.
+    if (_findOnPathForTest('codex')) return;
     const result = detectCodexBin({ preferPath: '/tmp/non-existent-codex-xyz' });
-    if (result.ready) return; // CI host has codex — not the test's concern
     expect(result.ready).toBe(false);
     // Codex is optional → error copy mentions the fallback.
     expect((result.error ?? '').toLowerCase()).toContain('optional');

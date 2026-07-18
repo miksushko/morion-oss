@@ -1,5 +1,5 @@
 /**
- * Tauri IPC wrappers for the bundled morion skill (`skills/morion/`).
+ * Tauri IPC wrappers for the bundled agent skills (`skills/<name>/`).
  *
  * In dev / browser mode (no Tauri shell) every call resolves to a "no
  * bundle / not installed" envelope so the Settings UI renders an
@@ -8,6 +8,13 @@
  * invariant.
  */
 import { isTauri } from './env';
+
+/** UI copy of the shipped-skill list (source of truth mirrors
+ *  `scripts/prepare-skills.mjs` / `src/server/routes/skills.ts` /
+ *  `src-tauri/src/skills/helpers.rs`). Order drives the Settings
+ *  Skills tab card order. */
+export const SHIPPED_SKILLS = ['morion', 'morion-workflows'] as const;
+export type ShippedSkillName = (typeof SHIPPED_SKILLS)[number];
 
 export interface SkillState {
   name: string;
@@ -33,8 +40,7 @@ export interface SkillState {
   bundledPath: string | null;
 }
 
-const NOT_TAURI: SkillState = {
-  name: 'morion',
+const NOT_TAURI: Omit<SkillState, 'name'> = {
   installed: false,
   installedExternally: false,
   bundledVersion: null,
@@ -59,33 +65,36 @@ async function invokeIpc<T>(cmd: string, args?: Record<string, unknown>): Promis
 
 export const skillsApi = {
   /**
-   * Pure read: describes bundled + installed state. Safe to call any
-   * time (settings panel mount, post-install refresh, polling). No
-   * side effects on disk.
+   * Pure read: describes bundled + installed state for one shipped
+   * skill. Safe to call any time (settings panel mount, post-install
+   * refresh, polling). No side effects on disk.
    *
    * In browser/dev mode returns a non-installed placeholder so the
    * UI doesn't crash on `await`.
    */
-  async getState(): Promise<SkillState> {
-    if (!isTauri) return { ...NOT_TAURI };
-    return invokeIpc<SkillState>('skill_get_state');
+  async getState(name: ShippedSkillName = 'morion'): Promise<SkillState> {
+    if (!isTauri) return { name, ...NOT_TAURI };
+    return invokeIpc<SkillState>('skill_get_state', { name });
   },
 
   /**
-   * Copy the bundled skill into `~/.claude/skills/morion/`. Pass
+   * Copy the bundled skill into `~/.claude/skills/<name>/`. Pass
    * `force: true` to override the customised-install / external-install
    * guards (the UI flips this to true after showing a confirm dialog).
    */
-  async install(force = false): Promise<SkillState> {
-    return invokeIpc<SkillState>('skill_install', { force });
+  async install(
+    force = false,
+    name: ShippedSkillName = 'morion',
+  ): Promise<SkillState> {
+    return invokeIpc<SkillState>('skill_install', { force, name });
   },
 
   /**
-   * Remove `~/.claude/skills/morion/`. Refuses if the directory lacks
+   * Remove `~/.claude/skills/<name>/`. Refuses if the directory lacks
    * our `.morion-version` marker — the UI surfaces that as "Installed
    * by another tool — manage it yourself".
    */
-  async uninstall(): Promise<SkillState> {
-    return invokeIpc<SkillState>('skill_uninstall');
+  async uninstall(name: ShippedSkillName = 'morion'): Promise<SkillState> {
+    return invokeIpc<SkillState>('skill_uninstall', { name });
   },
 };

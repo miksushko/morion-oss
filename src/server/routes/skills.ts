@@ -4,77 +4,116 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * HTTP endpoints serving the bundled `skills/morion/` tree.
+ * HTTP endpoints serving the bundled skill trees (`skills/<name>/`).
  *
  * Why these exist (ticket `01KQFF7EE7VS0R7AA9B9WAH3RQ`): Tauri-side
- * Install button (`skill_install` IPC → `~/.claude/skills/morion/`)
+ * Install button (`skill_install` IPC → `~/.claude/skills/<name>/`)
  * only helps Claude Code users, and only in the desktop build. The
  * web/dev build couldn't surface ANY install affordance, and even
  * Tauri users running non-Claude agents (Codex CLI / Cursor / Cline)
- * had no download path — just a "copy this folder manually" hint
- * pointing at an internal bundled path most users never look at.
+ * had no download path.
  *
- * These routes give every entry point a working download:
- *   - `GET /api/skills/morion/manifest`     → JSON descriptor
- *   - `GET /api/skills/morion/file?path=..` → individual file
- *   - `GET /api/skills/morion/bundle.zip`   → whole tree as ZIP
- *     (store-only, no external dep — minimal handcrafted writer
- *     below)
+ * Multi-skill (Mo Workflows epic): routes
+ * are parameterised on the skill name, gated by the SHIPPED_SKILLS
+ * allowlist. Old `/api/skills/morion/*` URLs keep working — they match
+ * the `:name` param.
+ *
+ *   - `GET /api/skills`                       → index of shipped skills
+ *   - `GET /api/skills/:name/manifest`        → JSON descriptor
+ *   - `GET /api/skills/:name/file?path=..`    → individual file
+ *   - `GET /api/skills/:name/bundle.zip`      → whole tree as ZIP
+ *     (store-only, no external dep — minimal handcrafted writer below)
  *
  * Public surface — no auth gate change required; the existing
  * `/api/*` token check covers it.
  */
 
-const SKILL_NAME = 'morion';
+/** Server-side copy of the shipped-skill list. Must stay in sync with
+ *  `SHIPPED_SKILLS` in `scripts/prepare-skills.mjs` (build copy) and
+ *  `src-tauri/src/skills/helpers.rs` (IPC install surface). */
+const SHIPPED_SKILLS = ['morion', 'morion-workflows'] as const;
 
-// Files inside the skill that we expose. Hardcoded so an attacker
-// can't trick us into serving arbitrary paths via `?path=../../etc/passwd`.
-const ALLOWED_FILES = [
-  'SKILL.md',
-  'references/mo-tools.md',
-  'references/kanban-workflow.md',
-];
-
-let cachedSkillDir: string | null = null;
+const cachedSkillDirs = new Map<string, string>();
 
 /**
- * Resolve `skills/morion/` from a few candidate locations:
- *   - `MORION_SKILLS_DIR` env override (used by tests + power users)
- *   - `<this file>/../../../../skills/morion`  (tsx dev: src/server/routes → repo root)
- *   - `<this file>/../../../skills/morion`     (compiled dist: dist/server/routes → repo root)
- *   - `<process.execPath>/resources/skills/morion` (Tauri sidecar bundle)
+ * Resolve `skills/<name>/` from a few candidate locations:
+ *   - `MORION_SKILLS_DIR` env override (tests + power users). Points at
+ *     the skills ROOT (`<root>/<name>/SKILL.md`); a legacy value
+ *     pointing directly at the morion dir still resolves for `morion`.
+ *   - `<this file>/../../../skills/<name>`    (tsx dev: src/server/routes → repo root)
+ *   - `<this file>/../../../../skills/<name>` (compiled dist: dist/server/routes → repo root)
+ *   - `<process.execPath>/resources/skills/<name>` (Tauri sidecar bundle)
  */
-function resolveSkillDir(): string | null {
-  if (cachedSkillDir && existsSync(cachedSkillDir)) return cachedSkillDir;
+function resolveSkillDir(name: string): string | null {
+  const cached = cachedSkillDirs.get(name);
+  if (cached && existsSync(cached)) return cached;
   const envOverride = process.env.MORION_SKILLS_DIR;
   if (envOverride) {
     const abs = resolve(envOverride);
-    if (existsSync(join(abs, 'SKILL.md'))) {
-      cachedSkillDir = abs;
+    if (existsSync(join(abs, name, 'SKILL.md'))) {
+      const dir = join(abs, name);
+      cachedSkillDirs.set(name, dir);
+      return dir;
+    }
+    // Legacy override semantics: the env var pointed directly at the
+    // morion skill dir (pre-multi-skill). Honour it for morion only.
+    if (name === 'morion' && existsSync(join(abs, 'SKILL.md'))) {
+      cachedSkillDirs.set(name, abs);
       return abs;
     }
   }
   const here = dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    resolve(here, '..', '..', '..', 'skills', SKILL_NAME), // tsx dev
-    resolve(here, '..', '..', '..', '..', 'skills', SKILL_NAME), // compiled
-    resolve(dirname(process.execPath), 'resources', 'skills', SKILL_NAME), // sidecar
+    resolve(here, '..', '..', '..', 'skills', name), // tsx dev
+    resolve(here, '..', '..', '..', '..', 'skills', name), // compiled
+    resolve(dirname(process.execPath), 'resources', 'skills', name), // sidecar
     resolve(
       dirname(process.execPath),
       '..',
       'Resources',
       'resources',
       'skills',
-      SKILL_NAME,
+      name,
     ), // macOS .app
   ];
   for (const candidate of candidates) {
     if (existsSync(join(candidate, 'SKILL.md'))) {
-      cachedSkillDir = candidate;
+      cachedSkillDirs.set(name, candidate);
       return candidate;
     }
   }
   return null;
+}
+
+/**
+ * Enumerate the servable files of a skill: a bounded recursive walk
+ * that only surfaces regular `.md` files, skips dotfiles (the
+ * installed-side `.morion-version` marker must never ship back out)
+ * and symlinks (no way to escape the tree), and caps depth. The
+ * `/file` endpoint only serves paths that appear in this list —
+ * traversal via `?path=../../etc/passwd` can't match an enumerated
+ * relative path.
+ */
+function listSkillFiles(dir: string): string[] {
+  const out: string[] = [];
+  const walk = (rel: string, depth: number): void => {
+    if (depth > 4) return;
+    const entries = readdirSync(rel ? join(dir, rel) : dir, {
+      withFileTypes: true,
+    });
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      if (entry.isSymbolicLink()) continue;
+      const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        walk(childRel, depth + 1);
+      } else if (entry.isFile() && entry.name.endsWith('.md')) {
+        out.push(childRel);
+      }
+    }
+  };
+  walk('', 0);
+  return out.sort();
 }
 
 function parseSkillVersion(skillMdPath: string): string | null {
@@ -88,17 +127,15 @@ function parseSkillVersion(skillMdPath: string): string | null {
   }
 }
 
-function buildManifest(skillDir: string) {
+function buildManifest(skillDir: string, name: string) {
   const skillMd = join(skillDir, 'SKILL.md');
   const version = parseSkillVersion(skillMd);
-  const files = ALLOWED_FILES.filter((rel) => existsSync(join(skillDir, rel))).map(
-    (rel) => {
-      const stat = statSync(join(skillDir, rel));
-      return { path: rel, size: stat.size };
-    },
-  );
+  const files = listSkillFiles(skillDir).map((rel) => {
+    const stat = statSync(join(skillDir, rel));
+    return { path: rel, size: stat.size };
+  });
   const totalSize = files.reduce((s, f) => s + f.size, 0);
-  return { name: SKILL_NAME, version, files, totalSize };
+  return { name, version, files, totalSize };
 }
 
 // ---------- minimal store-only ZIP writer ----------
@@ -192,37 +229,59 @@ function buildZip(files: Array<{ path: string; bytes: Buffer }>): Buffer {
 
 // ---------- routes ----------
 
+function skillNameFromParam(raw: string): string | null {
+  return (SHIPPED_SKILLS as readonly string[]).includes(raw) ? raw : null;
+}
+
 export function registerSkillsRoutes(app: Hono): void {
-  app.get('/api/skills/morion/manifest', (c) => {
-    const dir = resolveSkillDir();
+  app.get('/api/skills', (c) => {
+    const skills = SHIPPED_SKILLS.map((name) => {
+      const dir = resolveSkillDir(name);
+      if (!dir) return { name, available: false as const };
+      return { available: true as const, ...buildManifest(dir, name) };
+    });
+    return c.json({ skills });
+  });
+
+  app.get('/api/skills/:name/manifest', (c) => {
+    const name = skillNameFromParam(c.req.param('name'));
+    if (!name)
+      return c.json(
+        { error: 'skill_not_found', message: 'Unknown skill name.' },
+        404,
+      );
+    const dir = resolveSkillDir(name);
     if (!dir)
       return c.json(
         { error: 'skill_not_found', message: 'Bundled skill directory missing.' },
         404,
       );
-    return c.json(buildManifest(dir));
+    return c.json(buildManifest(dir, name));
   });
 
-  app.get('/api/skills/morion/file', (c) => {
-    const dir = resolveSkillDir();
+  app.get('/api/skills/:name/file', (c) => {
+    const name = skillNameFromParam(c.req.param('name'));
+    if (!name)
+      return c.json(
+        { error: 'skill_not_found', message: 'Unknown skill name.' },
+        404,
+      );
+    const dir = resolveSkillDir(name);
     if (!dir)
       return c.json(
         { error: 'skill_not_found', message: 'Bundled skill directory missing.' },
         404,
       );
     const pathParam = c.req.query('path') ?? '';
-    if (!ALLOWED_FILES.includes(pathParam))
+    // Exact match against the enumerated tree — the only way a path is
+    // servable is to literally appear in the bounded walk, so `../`
+    // tricks and absolute paths can never match.
+    if (!listSkillFiles(dir).includes(pathParam))
       return c.json(
-        { error: 'invalid_path', message: `Path not in allowlist: ${pathParam}` },
+        { error: 'invalid_path', message: `Path not in skill tree: ${pathParam}` },
         400,
       );
-    const abs = join(dir, pathParam);
-    if (!existsSync(abs))
-      return c.json(
-        { error: 'file_not_found', message: pathParam },
-        404,
-      );
-    const bytes = readFileSync(abs);
+    const bytes = readFileSync(join(dir, pathParam));
     // Hono's `c.body()` expects `Uint8Array<ArrayBuffer>` — Node's
     // `Buffer<ArrayBufferLike>` doesn't unify under TS strict because
     // ArrayBufferLike includes SharedArrayBuffer. Copy into a plain
@@ -233,25 +292,24 @@ export function registerSkillsRoutes(app: Hono): void {
     });
   });
 
-  app.get('/api/skills/morion/bundle.zip', (c) => {
-    const dir = resolveSkillDir();
+  app.get('/api/skills/:name/bundle.zip', (c) => {
+    const name = skillNameFromParam(c.req.param('name'));
+    if (!name)
+      return c.json(
+        { error: 'skill_not_found', message: 'Unknown skill name.' },
+        404,
+      );
+    const dir = resolveSkillDir(name);
     if (!dir)
       return c.json(
         { error: 'skill_not_found', message: 'Bundled skill directory missing.' },
         404,
       );
-    // Walk the actual tree (in case allowlist is later expanded by
-    // adding files to the canonical source). Bound to ALLOWED_FILES
-    // so an attacker can't sneak in arbitrary files via symlinks.
     const files: Array<{ path: string; bytes: Buffer }> = [];
-    for (const rel of ALLOWED_FILES) {
-      const abs = join(dir, rel);
-      if (!existsSync(abs)) continue;
-      const stat = statSync(abs);
-      if (!stat.isFile()) continue;
+    for (const rel of listSkillFiles(dir)) {
       files.push({
-        path: `${SKILL_NAME}/${rel}`, // unzips into a `morion/` folder
-        bytes: readFileSync(abs),
+        path: `${name}/${rel}`, // unzips into a `<name>/` folder
+        bytes: readFileSync(join(dir, rel)),
       });
     }
     if (files.length === 0)
@@ -264,17 +322,20 @@ export function registerSkillsRoutes(app: Hono): void {
     // comment there for the type-strict reason.
     return c.body(new Uint8Array(zip), 200, {
       'Content-Type': 'application/zip',
-      'Content-Disposition': `attachment; filename="morion-skill.zip"`,
+      'Content-Disposition': `attachment; filename="${name}-skill.zip"`,
       'Content-Length': String(zip.length),
     });
   });
 }
 
 // Internal helper for tests + diagnostic output. Not part of the route surface.
-export const __test = { resolveSkillDir, buildManifest, buildZip, parseSkillVersion };
-
-// `readdirSync` is imported but only used by the test helper layer if
-// we extend ALLOWED_FILES dynamically later. Touch it to silence the
-// unused-import linter without dropping the import (kept for future
-// dynamic-walk variant).
-void readdirSync;
+export const __test = {
+  resolveSkillDir,
+  buildManifest,
+  buildZip,
+  parseSkillVersion,
+  listSkillFiles,
+  _resetCache: (): void => {
+    cachedSkillDirs.clear();
+  },
+};

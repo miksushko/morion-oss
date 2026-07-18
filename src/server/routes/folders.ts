@@ -2,6 +2,7 @@ import type { Hono } from 'hono';
 import { z } from 'zod';
 import type { ToolContext } from '../tools/types.js';
 import { duplicateFolder } from '../../core/folders/duplicate.js';
+import { deleteFolderWithNotes } from '../features/folder-delete.js';
 
 /**
  * Folder CRUD + reorder + duplicate.
@@ -87,29 +88,20 @@ export function registerFolderRoutes(app: Hono, ctx: ToolContext): void {
 
   app.delete('/api/folders/:id', (c) => {
     const id = c.req.param('id');
-    const purgeNotes =
-      ['1', 'true'].includes(
-        new URL(c.req.url).searchParams.get('purgeNotes') ?? '',
-      );
-    let deletedNoteCount = 0;
-    // Mo system notes (`mo:catalog`, `mo:cluster:*`, `mo:patrol-log`)
-    // are ALWAYS hard-deleted with the folder regardless of the
-    // purgeNotes flag — they're machine-maintained indices, not user
-    // content, and they'd just confuse Trash if soft-deleted (see
-    // the dogfood report from 2026-05-03). Regular notes only get
-    // touched when purgeNotes is set.
-    const { regular, moSystem } = ctx.folders.noteIdsInside(id);
-    for (const noteId of moSystem) {
-      ctx.notes.hardDelete(noteId, actor);
-    }
-    if (purgeNotes) {
-      for (const noteId of regular) {
-        if (ctx.notes.delete(noteId, actor)) deletedNoteCount++;
-      }
-    }
-    const ok = ctx.folders.delete(id);
+    // Default: move the folder's notes to Trash with it. Pass
+    // `?keepNotes=1` to preserve them as unfiled (folder_id → NULL)
+    // instead. mo:* system notes are always hard-deleted either way.
+    // See src/server/features/folder-delete.ts.
+    const keepNotes = ['1', 'true'].includes(
+      new URL(c.req.url).searchParams.get('keepNotes') ?? '',
+    );
+    const { ok, trashedNoteCount } = deleteFolderWithNotes(ctx, id, {
+      keepNotes,
+    });
     if (!ok) return c.json({ error: 'not found' }, 404);
-    return c.json({ ok, deletedNoteCount });
+    // `deletedNoteCount` kept as an alias for back-compat with any
+    // client reading the old field name.
+    return c.json({ ok, trashedNoteCount, deletedNoteCount: trashedNoteCount });
   });
 
   // ---------- archive ----------

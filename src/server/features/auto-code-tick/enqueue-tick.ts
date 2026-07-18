@@ -11,6 +11,19 @@ import {
 import { maybePostRejectionComment } from './rejection-comments.js';
 
 /**
+ * Rejections that are TRANSIENT — the ticket's `todo` trigger is still
+ * unresolved rather than genuinely failed. If the card has since
+ * settled back into `todo`, the checkpoint must NOT advance past the
+ * triggering audit row, or the edge-triggered tick will never look at
+ * the card again (an already-`todo` card emits no new status_change →
+ * todo row).
+ */
+const TRANSIENT_REJECTION_REASONS: ReadonlySet<string> = new Set([
+  'ticket_no_longer_todo',
+  'cancelled_during_admission',
+]);
+
+/**
  * Incremental tick — process `status_change → todo` audit rows
  * since the stored checkpoint. Idempotent: dispatcher's atomic
  * admission collapses duplicate enqueues, so re-running with a
@@ -102,6 +115,13 @@ export async function runAutoCodeEnqueueTick(
 
   let dispatcher: AutoCodeDispatcher | null = null;
   let maxId = checkpoint;
+  // Smallest audit-row id whose enqueue was TRANSIENTLY rejected while
+  // the ticket is still in `todo`. Keeps the checkpoint below it so the
+  // next tick retries — the anti-strand guard (see TRANSIENT_REJECTION_REASONS).
+  let holdBeforeId: number | null = null;
+  const noteStatusStmt = deps.db.prepare<[string], { status: string }>(
+    'SELECT status FROM notes WHERE id = ? AND deleted_at IS NULL',
+  );
   for (const row of auditRows) {
     if (!dispatcher) {
       try {
@@ -133,6 +153,19 @@ export async function runAutoCodeEnqueueTick(
         // a ticket silently stuck in `todo`. Dedup'd to one
         // comment / 24h per ticket to avoid spam on persistent issues.
         maybePostRejectionComment(deps, row.note_id, out, Date.now());
+        // Anti-strand: a transient rejection (toggle race) on a card
+        // that is now back in `todo` must not let the checkpoint pass
+        // this row, or the card is never re-examined. Hold below it so
+        // the next tick retries; once the card is stably `todo` the
+        // retry enqueues and the checkpoint advances normally. A card
+        // that genuinely left `todo` isn't held (status != 'todo').
+        if (
+          TRANSIENT_REJECTION_REASONS.has(out.reason) &&
+          noteStatusStmt.get(row.note_id)?.status === 'todo'
+        ) {
+          holdBeforeId =
+            holdBeforeId === null ? row.id : Math.min(holdBeforeId, row.id);
+        }
       }
     } catch (err) {
       log.warn('enqueueTicket threw', {
@@ -144,9 +177,11 @@ export async function runAutoCodeEnqueueTick(
     }
   }
 
-  if (maxId > checkpoint) {
-    deps.workspaceSettings.set(AUTO_CODE_AUDIT_CHECKPOINT_KEY, maxId);
-    summary.newCheckpoint = maxId;
+  const nextCheckpoint =
+    holdBeforeId !== null ? Math.min(maxId, holdBeforeId - 1) : maxId;
+  if (nextCheckpoint > checkpoint) {
+    deps.workspaceSettings.set(AUTO_CODE_AUDIT_CHECKPOINT_KEY, nextCheckpoint);
+    summary.newCheckpoint = nextCheckpoint;
   }
 
   if (summary.enqueued > 0 || Object.keys(summary.rejected).length > 0) {

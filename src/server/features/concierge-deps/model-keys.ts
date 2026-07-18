@@ -14,6 +14,8 @@
  *   - gather (subagent / synthesis / synthesis-thorough — Phase 8
  *     context restructure ticket 01KQFQ1RJV7EH0X3WF2H1A476J)
  *   - merge-resolver (primary + fallback)
+ *   - workflow-builder (primary + fallback — Mo Workflows epic,
+ *     `mo_build_workflow` drafting)
  */
 import type { ConciergeBackend } from './types.js';
 
@@ -85,4 +87,20 @@ export function mergeResolverModelKey(backend: ConciergeBackend): string {
 
 export function mergeResolverFallbackKey(backend: ConciergeBackend): string {
   return `concierge.${backend}_merge_resolver_model_fallback`;
+}
+
+/**
+ * Per-backend model settings for the `mo_build_workflow` drafting
+ * pipeline (Mo authors WorkflowDefinition JSON from a natural-language
+ * instruction). Schema-heavy structured output — users typically pick
+ * a STRONGER model here than the chat tier. Empty stored value means
+ * "fall back to tier2 → tier1" (mirrors the gather resolver shape) so
+ * the tool works out of the box on any configured backend.
+ */
+export function workflowBuilderModelKey(backend: ConciergeBackend): string {
+  return `concierge.${backend}_workflow_builder_model`;
+}
+
+export function workflowBuilderFallbackKey(backend: ConciergeBackend): string {
+  return `concierge.${backend}_workflow_builder_model_fallback`;
 }

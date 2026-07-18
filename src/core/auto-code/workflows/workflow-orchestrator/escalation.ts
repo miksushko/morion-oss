@@ -6,7 +6,6 @@
  * on 2026-05-16. Grouped because all three are small (≤45 LOC each)
  * and share the same "reach into deps without owning state" shape.
  */
-import { AUTO_CODE_ACTOR } from '../../actor-constants.js';
 import type { RunHandle } from '../runner.js';
 import type { WorkflowOrchestrator as WO } from '../workflow-orchestrator.js';
 import { formatActor, snippet } from './helpers.js';
@@ -79,29 +78,36 @@ export async function openEscalationChat(orch: WO,
   }
 }
 
+/** One comment body's share of the prompt — a single pasted log dump
+ *  must not drown the other 19 comments. */
+const COMMENT_BODY_CAP = 1_000;
+
 export function buildRecentCommentsBlock(orch: WO, taskId: string): string {
-  // Pull more than `recentCommentsLimit` since we filter out
-  // auto-code's own self-talk below — without the over-fetch a
-  // ticket with mostly prior auto-code paused comments would
-  // surface as "(no recent comments)" even when the user left
-  // real guidance under them.
+  // "Mo = router, not narrator" (2026-07-14): ticket comments are
+  // a shared
+  // communication channel between the user, the agents, and Mo —
+  // auto-code's own comments (Mo decision traces, stage summaries,
+  // pause / sink wrap-ups) are context the next stage or run SHOULD
+  // see, not self-talk to hide. The old AUTO_CODE_ACTOR filter (which
+  // existed because a stale "Auto-code paused: no API key" comment
+  // biased the next mo_start toward reject) is replaced by
+  // deterministic caps: newest `recentCommentsLimit` comments
+  // regardless of actor, each body clipped to COMMENT_BODY_CAP. The
+  // reject-bias concern is now handled by the decision role's
+  // ground-truth + evidence-citing rules instead of by hiding history.
   const page = orch.deps.comments.list(taskId, {
-    limit: orch.recentCommentsLimit * 3,
+    limit: orch.recentCommentsLimit,
   });
   if (page.items.length === 0) return '(no recent comments)';
-  // Filter out comments posted BY auto-code itself (kanban moves,
-  // failure summaries, Mo decision traces, sink wrap-ups). Re-
-  // dragging a ticket = user wants a fresh attempt; resurfacing
-  // "Auto-code paused. No API key found..." in Mo's recent-comments
-  // context biases the next mo_start toward another reject decision
-  // even after the user fixed the underlying problem. The user's
-  // own comments + comments by OTHER mcp actors (mo, claude code,
-  // etc) stay visible — those carry real instruction / guidance.
-  const userVisible = page.items.filter((c) => c.actor !== AUTO_CODE_ACTOR);
-  if (userVisible.length === 0) return '(no recent comments)';
-  return userVisible
+  return page.items
     .slice(0, orch.recentCommentsLimit)
     .reverse()
-    .map((c) => `• ${formatActor(c.actor)}: ${c.body}`)
+    .map((c) => {
+      const body =
+        c.body.length > COMMENT_BODY_CAP
+          ? `${c.body.slice(0, COMMENT_BODY_CAP)}… [comment truncated]`
+          : c.body;
+      return `• ${formatActor(c.actor)}: ${body}`;
+    })
     .join('\n');
 }

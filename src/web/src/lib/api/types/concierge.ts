@@ -46,6 +46,10 @@ export interface PipelineModelValues {
   topicHygieneFallback: string;
   mergeResolver: string;
   mergeResolverFallback: string;
+  /** `mo_build_workflow` drafting — schema-heavy structured output;
+   *  usually a stronger model than the chat tier. */
+  workflowBuilder: string;
+  workflowBuilderFallback: string;
 }
 
 export interface PipelineModelsState {
@@ -71,6 +75,9 @@ export interface ConciergeFolderSettings {
   /** Auto-code Phase 1 — per-folder kill switch. Server refuses
    * `true` when `linkedRepoPath` is null. */
   autoCodeEnabled: boolean;
+  /** Per-folder cap on concurrent in-flight auto-code runs. Null =
+   * use the workspace default (5). Set in the Auto-Code tab. */
+  autoCodeConcurrency: number | null;
   /** Mo Indexing — per-folder generic-terms blocklist for Tier 1.
    * Free-text; the prompt builder inlines it verbatim. Empty string
    * means no per-folder rules apply (only the workspace-wide

@@ -576,7 +576,7 @@ export function App() {
         onClose={() => setPaletteOpen(false)}
         onSelect={handleSelectFromSearch}
       />
-      <ToastBanner message={toast} />
+      <ToastBanner toast={toast} />
       <AppDialogsLayer
         dialogs={dialogs}
         setAutoCodeFolderEnabled={setAutoCodeFolderEnabled}

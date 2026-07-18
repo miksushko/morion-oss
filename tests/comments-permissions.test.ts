@@ -115,15 +115,3 @@ describe('canEditComment — settings kill-switch', () => {
     expect(decision).toEqual({ ok: true });
   });
 });
-
-describe('canEditComment — Free tier short-circuits permission engine', () => {
-  it('canPerform returns true when isPro is false — no permission denial on Free', () => {
-    const ctx = setup('user');
-    const note = ctx.notes.create({ body: '# A\n\nb', source: 'user' }, 'user');
-    const comment = ctx.comments.create(note.id, 'hi', 'user')!;
-
-    // Fresh DB → no license → Free tier. canPerform is permissive.
-    const decision = canEditComment(comment, ctx.tc);
-    expect(decision).toEqual({ ok: true });
-  });
-});

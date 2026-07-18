@@ -260,3 +260,90 @@ describe('POST /api/notes/:id/kanban-move — auto-code drift cancel', () => {
     expect(ctx.agentQueue.listInFlightForFolder(folderId).length).toBe(0);
   });
 });
+
+describe('POST /api/auto-code/runs/:id/cancel — explicit Stop button', () => {
+  let ctx: Ctx;
+  beforeEach(() => {
+    ctx = setup();
+  });
+
+  it('cancels the in-flight run resolved from the run id', async () => {
+    const { folderId } = setupAutoCodeFolder(ctx);
+    const task = ctx.notes.create(
+      { body: '# T', folderId, source: 'user', status: 'doing' },
+      'user',
+    );
+    const rowId = seedInFlightRow(ctx, folderId, task.id);
+
+    const res = await ctx.app.request(
+      `/api/auto-code/runs/${rowId}/cancel`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' } },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean };
+    expect(body.ok).toBe(true);
+    expect(ctx.agentQueue.getById(rowId)?.state).toBe('cancelled');
+    expect(ctx.agentQueue.getById(rowId)?.lastError).toContain('user_stop');
+  });
+
+  it('404s when the run id matches neither a workflow run nor a legacy row', async () => {
+    setupAutoCodeFolder(ctx);
+    const res = await ctx.app.request(
+      `/api/auto-code/runs/does-not-exist/cancel`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' } },
+    );
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('kanban-move → todo surfaces auto-code enqueue rejection', () => {
+  let ctx: Ctx;
+  beforeEach(() => {
+    ctx = setup();
+  });
+
+  it('returns autoCode.ok=false with a message when the enqueue is rejected', async () => {
+    const folder = ctx.folders.create('AC folder');
+    ctx.folders.setViewMode(folder.id, 'kanban');
+    // Mo + auto-code on, but the linked repo path does NOT exist on disk
+    // (the real "repo was moved/deleted" case) — enqueue rejects.
+    ctx.folderSettings.update(folder.id, {
+      enabled: true,
+      autoCodeEnabled: true,
+      linkedRepoPath: '/nonexistent/morion/test-repo-xyz',
+    });
+    const task = ctx.notes.create(
+      { body: '# T', folderId: folder.id, source: 'user', status: 'backlog' },
+      'user',
+    );
+
+    const res = await ctx.app.request(
+      `/api/notes/${task.id}/kanban-move`,
+      json({ status: 'todo' }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      autoCode?: { ok: boolean; reason: string; message: string };
+    };
+    expect(body.autoCode?.ok).toBe(false);
+    expect(typeof body.autoCode?.message).toBe('string');
+    expect(body.autoCode?.message.length).toBeGreaterThan(0);
+  });
+
+  it('omits autoCode entirely when the folder has auto-code disabled', async () => {
+    const folder = ctx.folders.create('Plain folder');
+    ctx.folders.setViewMode(folder.id, 'kanban');
+    // No auto-code / repo wired — the route never attempts an enqueue.
+    const task = ctx.notes.create(
+      { body: '# T', folderId: folder.id, source: 'user', status: 'backlog' },
+      'user',
+    );
+    const res = await ctx.app.request(
+      `/api/notes/${task.id}/kanban-move`,
+      json({ status: 'todo' }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { autoCode?: unknown };
+    expect(body.autoCode).toBeUndefined();
+  });
+});

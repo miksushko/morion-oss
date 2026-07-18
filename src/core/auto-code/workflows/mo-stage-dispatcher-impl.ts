@@ -54,7 +54,7 @@ const moStageDecisionRole: SubMoRole<MoStageDecisionOutput> = {
   schema: MoStageDecisionOutput,
   schemaDescription: `{
   "branch": string,   // EXACTLY one of the legal branches listed in the user message. Case-sensitive. No quotes, no markdown.
-  "reason": string    // One concise sentence (≤300 chars) explaining the decision in your own voice. Reference the specific ticket detail / stage output that drove the pick. NEVER lie about tool outcomes if a stage failed.
+  "reason": string    // 1-2 concise sentences (≤500 chars) explaining the decision. MUST include a short verbatim quote ("...") from the evaluated stage output / ticket that drove the pick — no quote, no credibility. NEVER lie about tool outcomes if a stage failed.
 }`,
   extraRules: `
 DECISION HIERARCHY (strict — order matters):
@@ -118,6 +118,12 @@ PROCEDURAL RULES:
 - Pick exactly ONE branch from the legal list. Picking anything else fails
   the run with mo_stage_invalid_branch — the user will see your raw output
   in the audit trail and lose trust.
+- EVIDENCE-CITING: your reason must quote a short verbatim fragment (in
+  "quotes") from the direct-predecessor stage output (or the ticket /
+  user reply) that justifies the branch. A generalized reason with no
+  quote ("fix seems insufficient") is not acceptable — cite the exact
+  phrase you are reacting to. You are a router relaying evidence, not a
+  narrator writing impressions.
 - The reason is what the user sees as the ticket comment after this
   decision. Make it actionable — "review approved the diff" beats "approve"
   alone; "ticket missing acceptance criteria" beats "reject"; "no diff yet,
@@ -328,20 +334,43 @@ function buildDecisionScope(input: MoStageDispatchInput): string {
     lines.push(`## Recent comments`);
     lines.push(input.ticket.recentComments);
   }
+  // Cross-run memory ("Mo = router, not narrator"): the previous
+  // terminal runs' digest. Critical for mo_start on a re-dragged
+  // ticket — the prior reject reason / reviewer verdicts must inform
+  // this decision instead of repeating it blind.
+  if (
+    typeof input.ticket.priorRuns === 'string' &&
+    input.ticket.priorRuns.length > 0
+  ) {
+    lines.push(``);
+    lines.push(input.ticket.priorRuns);
+  }
 
   // Prior stage outputs — most relevant for Mo decisions on
   // `mo_after_fix` / `mo_after_review` (they read what the agent
-  // produced). Limit total prose budget so token usage stays
-  // predictable on long pipelines.
+  // produced). "Mo = router, not narrator" (2026-07-14): the
+  // DIRECT PREDECESSORS of this
+  // decision node (inbound edges — the outputs this decision actually
+  // evaluates) get a near-full budget; a 1500-char slice of a
+  // reviewer's verdict is how "insufficient fix" mis-rejects happened.
+  // Older stages keep the tight cap so long pipelines stay predictable.
+  const inboundIds = new Set(
+    edges.filter((e) => e.to === input.stage.id).map((e) => e.from),
+  );
   const stageEntries = Object.entries(input.stageOutputs);
   if (stageEntries.length > 0) {
     lines.push(``);
     lines.push(`## Prior stage outputs`);
     for (const [stageId, payload] of stageEntries) {
+      const cap = inboundIds.has(stageId) ? 12_000 : 1_500;
       lines.push(``);
-      lines.push(`### \`${stageId}\``);
+      lines.push(
+        inboundIds.has(stageId)
+          ? `### \`${stageId}\` (direct predecessor — the output this decision evaluates)`
+          : `### \`${stageId}\``,
+      );
       lines.push('```json');
-      lines.push(truncate(JSON.stringify(payload.output, null, 2), 1500));
+      lines.push(truncate(JSON.stringify(payload.output, null, 2), cap));
       lines.push('```');
     }
   }

@@ -26,6 +26,7 @@ import { AgentResumeUnsupportedError } from '../harness/adapter.js';
 import type { CliAgentEvent } from '../harness/events.js';
 import { isResult, isError } from '../harness/events.js';
 import { renderPromptTemplate } from './template.js';
+import { realWorktreeDiffCapture } from './worktree-diff.js';
 import {
   consumeUntilTerminal,
   isRecoverableErrorKind,
@@ -52,6 +53,13 @@ export async function runCliAgentStage(
     await ctx.terminate(state, 'failed', 'run row vanished pre-cli_agent');
     return { kind: 'terminated' };
   }
+
+  // Deterministic handoff ("Mo = router, not narrator"): snapshot the
+  // pre-stage HEAD so the post-stage diff captures exactly what THIS
+  // stage changed, committed or not. Best-effort — null on non-repo
+  // paths (unit tests, exotic setups) and the fields are simply omitted.
+  const diffCapture = ctx.deps.worktreeDiff ?? realWorktreeDiffCapture;
+  const preStageSha = await diffCapture.headSha(fresh.worktreePath);
 
   const renderedPrompt = renderPromptTemplate(stage.promptTemplate, {
     ticket,
@@ -303,6 +311,23 @@ export async function runCliAgentStage(
       continue;
     }
     break;
+  }
+
+  // Enrich the completed stage's output with what actually changed in
+  // the worktree — facts for downstream templates
+  // ({{stages.<id>.output.diffstat}} / .filesChanged), persisted with
+  // the rest of output_json below.
+  if (stageOutcome === 'done' && state.stageOutputs[stage.id]) {
+    const diff = await diffCapture.diffSince(fresh.worktreePath, preStageSha);
+    if (diff) {
+      state.stageOutputs[stage.id] = {
+        output: {
+          ...(state.stageOutputs[stage.id].output as Record<string, unknown>),
+          diffstat: diff.diffstat,
+          filesChanged: diff.filesChanged,
+        },
+      };
+    }
   }
 
   repo.updateStage(

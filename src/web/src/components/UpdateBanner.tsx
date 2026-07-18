@@ -26,7 +26,7 @@ const platformEntrySchema = z.object({
   sha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 });
 
-const latestJsonSchema = z.object({
+export const latestJsonSchema = z.object({
   version: z.string().regex(/^\d+\.\d+\.\d+$/),
   pub_date: z.string().optional(),
   platforms: z.record(platformEntrySchema).optional(),
@@ -67,7 +67,7 @@ async function fetchRuntimePlatformKey(): Promise<string> {
  *   3. Otherwise return null — the banner shows a "Download" button that
  *      opens the releases page in the browser so the user can pick.
  */
-function resolveInstaller(
+export function resolveInstaller(
   parsed: z.infer<typeof latestJsonSchema>,
   platformKey: string,
 ): { url: string; sha256: string | null } | null {
@@ -75,7 +75,16 @@ function resolveInstaller(
   if (entry) {
     return { url: entry.url, sha256: entry.sha256 ?? null };
   }
-  if (platformKey === 'darwin-arm64') {
+  // Legacy flat-schema fallback: fabricate the DMG URL ONLY when the
+  // release predates the per-platform `platforms` map entirely (v1.1.x,
+  // darwin-arm64 was the sole platform then). If `platforms` IS present
+  // but merely lacks this platform — a PARTIAL publish where one build
+  // leg failed — do NOT guess a URL: the asset may not exist and the
+  // downloader hard-404s. Return null so the banner falls back to opening
+  // the releases page, identical to every other platform. Real incident:
+  // v1.5.2 shipped win32-only for ~1h after the macOS notarization leg
+  // failed; macOS clients 404'd on the guessed Morion_1.5.2_aarch64.dmg.
+  if (platformKey === 'darwin-arm64' && parsed.platforms === undefined) {
     return {
       url: `https://github.com/miksushko/morion-releases/releases/download/v${parsed.version}/Morion_${parsed.version}_aarch64.dmg`,
       sha256: parsed.dmg_sha256 ?? null,

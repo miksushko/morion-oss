@@ -4,6 +4,7 @@ import type { ToolContext } from '../tools/types.js';
 import { ConciergeFolderSettingsRepository } from '../../core/concierge/folder-settings-repository.js';
 import { AUTO_CODE_ACTOR } from '../../core/auto-code/actor-constants.js';
 import { buildAutoCodeDispatcher } from '../features/auto-code-factory/index.js';
+import { humanizeAutoCodeRejectionShort } from '../features/auto-code-tick/rejection-comments.js';
 
 /**
  * Kanban (Direction N) endpoints for the UI. Functionally thin wrappers
@@ -96,6 +97,13 @@ export function registerKanbanRoutes(app: Hono, ctx: ToolContext): void {
     })();
     if (!result) return c.json({ error: 'not found' }, 404);
 
+    // Populated when a drag INTO `todo` triggers an auto-code enqueue that
+    // is rejected for a user-actionable reason (e.g. the folder's linked
+    // repo was moved/deleted). Returned on the move response so the UI can
+    // flash an explicit notification instead of the ticket silently sitting
+    // in `todo` doing nothing.
+    let autoCode: { ok: false; reason: string; message: string } | undefined;
+
     // Auto-code drift cancel (sub-ticket 01KQEEC6B0D7EE7E3DY45DSP9K
     // follow-up). When the user manually drags a kanban card out of
     // a state where the agent is mid-fix, the in-flight queue row
@@ -141,42 +149,58 @@ export function registerKanbanRoutes(app: Hono, ctx: ToolContext): void {
         } else {
           // INBOUND to `todo`. Auto-enqueue subscriber: this is the
           // user-driven trigger per umbrella spec step 4 ("User
-          // двигает карточку в `todo`"). Build a per-request
-          // orchestrator + call enqueueTask. Errors are non-fatal
-          // (the move already landed; bad enqueue just means agent
-          // won't start, user can retry by moving out + back in).
+          // двигает карточку в `todo`"). The move already landed, so a
+          // bad enqueue is non-fatal — but we surface user-actionable
+          // rejections (linked repo missing, agent not installed, …) on
+          // the response so the UI can flash a notification instead of
+          // the ticket silently sitting in `todo`.
           //
-          // Done as fire-and-forget on the response path so the user's
-          // PATCH returns immediately — preflight + worktree setup
-          // (~1-2s) shouldn't block the kanban drag's return.
-          const dispatcherPromise = buildAutoCodeDispatcher(ctx);
+          // Admission rejections return fast (they gate BEFORE the slow
+          // worktree provisioning), so we race the enqueue against a 5s
+          // guard: a fast rejection is surfaced; the success path (git
+          // worktree setup, ~1-2s) resolves well within the guard; and a
+          // pathological hang can't wedge the drag response — the enqueue
+          // keeps running in the background either way (runner.start is
+          // self-driving; the legacy auto-tick was retired in
+          // 01KRB0W7CV1PF48YD8FF6J14DG).
           const folderId = result.folderId;
-          dispatcherPromise
-            .then(async (dispatcher) => {
-              try {
-                await dispatcher.enqueueTicket(noteId, folderId);
-                // Workflow-runner is self-driving (runner.start
-                // dispatches asynchronously) — no explicit kick needed.
-                // The legacy auto-tick path was retired with the legacy
-                // orchestrator (ticket 01KRB0W7CV1PF48YD8FF6J14DG).
-              } catch (err) {
+          const TIMEOUT = Symbol('timeout');
+          try {
+            const dispatcher = await buildAutoCodeDispatcher(ctx);
+            const enqueueP = dispatcher
+              .enqueueTicket(noteId, folderId)
+              .catch((err) => {
                 console.error(
                   '[auto-code] auto-enqueue on kanban-move failed:',
                   err,
                 );
-              }
-            })
-            .catch((err) => {
-              console.error(
-                '[auto-code] orchestrator factory failed on kanban-move:',
-                err,
+                return {
+                  kind: 'rejected' as const,
+                  reason: 'auto_code_unavailable',
+                };
+              });
+            const raced = await Promise.race([
+              enqueueP,
+              new Promise<typeof TIMEOUT>((r) => setTimeout(() => r(TIMEOUT), 5000)),
+            ]);
+            if (raced !== TIMEOUT && raced.kind === 'rejected') {
+              const message = humanizeAutoCodeRejectionShort(
+                raced.reason,
+                'missingDetails' in raced ? raced.missingDetails : undefined,
               );
-            });
+              if (message) autoCode = { ok: false, reason: raced.reason, message };
+            }
+          } catch (err) {
+            console.error(
+              '[auto-code] orchestrator factory failed on kanban-move:',
+              err,
+            );
+          }
         }
       }
     }
 
-    return c.json(result);
+    return c.json(autoCode ? { ...result, autoCode } : result);
   });
 
   // Status-change history for the card popover. Reuses the audit

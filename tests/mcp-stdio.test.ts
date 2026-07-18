@@ -348,7 +348,7 @@ describe('MCP stdio end-to-end', () => {
     }
   }, 15_000);
 
-  it('folders_delete unfiles its notes instead of destroying them', async () => {
+  it('folders_delete trashes its notes (soft-delete) instead of destroying them', async () => {
     // The dup folder still holds the cloned note from folders_duplicate.
     const db = new Database(dbPath, { readonly: true });
     const cloneRow = db
@@ -371,12 +371,13 @@ describe('MCP stdio end-to-end', () => {
         .get(dupFolderId) as { id: string } | undefined;
       expect(folder).toBeUndefined();
 
-      // Cloned note still exists and is now unfiled.
+      // Cloned note's row still exists (recoverable from Trash), but is
+      // now soft-deleted with the folder — the default trash-on-delete.
       const note = after
         .prepare('SELECT folder_id, deleted_at FROM notes WHERE id = ?')
         .get(cloneId) as { folder_id: string | null; deleted_at: number | null };
-      expect(note.folder_id).toBeNull();
-      expect(note.deleted_at).toBeNull();
+      expect(note).toBeDefined();
+      expect(note.deleted_at).not.toBeNull();
     } finally {
       after.close();
     }

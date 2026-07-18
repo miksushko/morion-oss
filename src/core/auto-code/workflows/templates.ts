@@ -5,6 +5,8 @@ import {
 import type { CliAgentName, WorkflowDefinition } from './types/index.js';
 import {
   FULL_PIPELINE_DEFINITION,
+  FIX_REVIEW_DOCS_DEFINITION,
+  FIX_REVIEW_DOCS_QA_DEFINITION,
   CODE_ONLY_DEFINITION,
 } from './templates/definitions.js';
 
@@ -140,10 +142,13 @@ function deriveOptionalAgents(def: WorkflowDefinition): readonly CliAgentName[] 
 }
 
 // Ticket 01KRWRHFAK7HPQYV8GN72BW2VC trimmed the registry from 7
-// templates to 3 base shapes — users author the rest in the editor.
-// Order matters: registry order drives UI dropdown order, and `default-v2`
-// stays in the middle so it lines up with the "balanced" interpretation
-// users expect (full pipeline above, single-agent below).
+// agent-permutation templates to base SHAPES; the Mo Workflows epic
+// (2026-07-14) extended it to five flows
+// that differ by STAGE COMPOSITION only — never ship two templates
+// that differ just by which agent fills a slot (that was the original
+// 7-template mistake; agent slots are editable per-stage).
+// Order matters: registry order drives UI dropdown order — sorted by
+// decreasing pipeline complexity (4 agents → 1 agent).
 const ENTRIES: readonly WorkflowTemplateMeta[] = [
   {
     id: 'plan-and-review-v2',
@@ -154,6 +159,26 @@ const ENTRIES: readonly WorkflowTemplateMeta[] = [
     agentChain: deriveAgentChain(FULL_PIPELINE_DEFINITION),
     requiredAgents: deriveRequiredAgents(FULL_PIPELINE_DEFINITION),
     optionalAgents: deriveOptionalAgents(FULL_PIPELINE_DEFINITION),
+  },
+  {
+    id: 'fix-review-docs-qa-v2',
+    label: 'Code + review + docs + QA · Mo-driven',
+    description:
+      'Four cli agents: implementer → code review (claude-fallback) → docs agent aligns the documentation → QA agent writes functional tests (playwright specs or a manual checklist). Human-in-the-loop after fix. The full assembly line for user-visible features.',
+    definition: FIX_REVIEW_DOCS_QA_DEFINITION,
+    agentChain: deriveAgentChain(FIX_REVIEW_DOCS_QA_DEFINITION),
+    requiredAgents: deriveRequiredAgents(FIX_REVIEW_DOCS_QA_DEFINITION),
+    optionalAgents: deriveOptionalAgents(FIX_REVIEW_DOCS_QA_DEFINITION),
+  },
+  {
+    id: 'fix-review-docs-v2',
+    label: 'Code + review + docs · Mo-driven',
+    description:
+      'Three cli agents: implementer → code review (claude-fallback, can reopen the implementer) → docs agent updates README / docs / changelogs to match what shipped. Human-in-the-loop after fix. Use when user-facing docs must not drift.',
+    definition: FIX_REVIEW_DOCS_DEFINITION,
+    agentChain: deriveAgentChain(FIX_REVIEW_DOCS_DEFINITION),
+    requiredAgents: deriveRequiredAgents(FIX_REVIEW_DOCS_DEFINITION),
+    optionalAgents: deriveOptionalAgents(FIX_REVIEW_DOCS_DEFINITION),
   },
   {
     id: DEFAULT_TEMPLATE_ID,

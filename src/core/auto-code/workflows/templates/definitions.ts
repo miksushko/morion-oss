@@ -13,7 +13,11 @@
  * so v2 superRefine invariants fire at module load.
  */
 
-import { buildAutocodeV2Template } from '../default-autocode.js';
+import {
+  buildAutocodeV2Template,
+  DEFAULT_FIX_PROMPT,
+  DEFAULT_REVIEW_PROMPT,
+} from '../default-autocode.js';
 import type { WorkflowDefinition } from '../types/index.js';
 import {
   PERMISSIVE_START_INSTRUCTION,
@@ -21,6 +25,8 @@ import {
   PLAN_REVIEW_PROMPT,
   IMPLEMENT_PROMPT,
   FEATURE_REVIEW_PROMPT,
+  DOCS_PROMPT,
+  QA_PROMPT,
 } from './prompts.js';
 
 /**
@@ -87,6 +93,85 @@ export const FULL_PIPELINE_DEFINITION: WorkflowDefinition = buildAutocodeV2Templ
     'Record the result: update the ticket via notes_update / tasks_move, post a closing comment via notes_add_comment summarising the shipped feature. Pick "done" on MCP success; "tools_failed" on errors.',
 });
 
+/** Shared fix/review agent specs for the docs / docs+qa flows —
+ *  identical to default-v2's stages so the flows differ ONLY by the
+ *  extra post-review stages (composition, not agent permutation). */
+const SHARED_FIX_AGENT = {
+  agent: 'claude',
+  promptTemplate: DEFAULT_FIX_PROMPT,
+  maxBudgetUsd: 2,
+  maxAttempts: 3,
+  allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
+} as const;
+
+const SHARED_REVIEW_AGENT = {
+  agent: 'codex',
+  promptTemplate: DEFAULT_REVIEW_PROMPT,
+  maxBudgetUsd: 1,
+  maxAttempts: 3,
+  allowedTools: ['Read', 'Glob', 'Grep', 'Bash'],
+  fallbackAgent: 'claude',
+} as const;
+
+const SHARED_DOCS_AGENT = {
+  agent: 'claude',
+  promptTemplate: DOCS_PROMPT,
+  maxBudgetUsd: 1,
+  maxAttempts: 3,
+  allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep'],
+} as const;
+
+const SHARED_AFTER_FIX_INSTRUCTION =
+  'Read the fix-stage summary. Pick "review" when the diff is non-trivial and worth a second-opinion review pass. Pick "ask_human" when the fix raised a concrete question that needs the user to answer before continuing. Pick "reject" when the fix stage failed / hit its budget / produced no diff.';
+
+const SHARED_TOOLS_INSTRUCTION =
+  'Record the result: update the ticket via notes_update / tasks_move, post a closing comment via notes_add_comment summarising what the agents shipped. Pick "done" on MCP success; "tools_failed" on errors.';
+
+/**
+ * Mo Workflows flow #3 — code + review + docs. After the reviewer
+ * approves, a third agent brings the documentation in line with the
+ * shipped change (README / docs/ / changelog / JSDoc). Mo gates the
+ * docs output with an advance/reopen/reject decision.
+ */
+export const FIX_REVIEW_DOCS_DEFINITION: WorkflowDefinition = buildAutocodeV2Template({
+  name: 'Code + review + docs',
+  description:
+    'Three cli agents: Claude writes the diff, Codex reviews it (claude-fallback, can reopen the implementer), then a docs agent updates README / docs / changelogs to match what shipped. Human-in-the-loop after fix. Use when the project keeps user-facing docs that must not drift.',
+  startInstruction: PERMISSIVE_START_INSTRUCTION,
+  fixAgent: SHARED_FIX_AGENT,
+  afterFixInstruction: SHARED_AFTER_FIX_INSTRUCTION,
+  withHumanInLoop: true,
+  reviewAgent: SHARED_REVIEW_AGENT,
+  docsAgent: SHARED_DOCS_AGENT,
+  toolsInstruction: SHARED_TOOLS_INSTRUCTION,
+});
+
+/**
+ * Mo Workflows flow #4 — code + review + docs + QA. Extends the docs
+ * flow with a fourth agent writing functional tests (playwright specs
+ * when the repo has an e2e setup, otherwise a manual checklist)
+ * validating the change through the UI.
+ */
+export const FIX_REVIEW_DOCS_QA_DEFINITION: WorkflowDefinition = buildAutocodeV2Template({
+  name: 'Code + review + docs + QA',
+  description:
+    'Four cli agents: Claude writes the diff, Codex reviews it (claude-fallback), a docs agent updates the documentation, then a QA agent writes functional tests — executable playwright specs when the repo has an e2e setup, otherwise a manual test checklist. Human-in-the-loop after fix. The full assembly line for user-visible features.',
+  startInstruction: PERMISSIVE_START_INSTRUCTION,
+  fixAgent: SHARED_FIX_AGENT,
+  afterFixInstruction: SHARED_AFTER_FIX_INSTRUCTION,
+  withHumanInLoop: true,
+  reviewAgent: SHARED_REVIEW_AGENT,
+  docsAgent: SHARED_DOCS_AGENT,
+  qaAgent: {
+    agent: 'claude',
+    promptTemplate: QA_PROMPT,
+    maxBudgetUsd: 1.5,
+    maxAttempts: 3,
+    allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
+  },
+  toolsInstruction: SHARED_TOOLS_INSTRUCTION,
+});
+
 /**
  * Process #3 — single-agent. Claude writes the diff, Mo posts the
  * closing comment, human-in-the-loop is available so the agent can
@@ -119,6 +204,11 @@ export const CODE_ONLY_DEFINITION: WorkflowDefinition = buildAutocodeV2Template(
       '',
       '--- Recent comments ---',
       '{{ticket.recentComments}}',
+      '',
+      '--- Previous auto-code runs of this ticket ---',
+      '{{ticket.priorRuns}}',
+      '',
+      '{{reopen.reason}}',
     ].join('\n'),
     maxBudgetUsd: 2,
     maxAttempts: 1,

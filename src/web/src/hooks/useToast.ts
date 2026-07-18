@@ -11,15 +11,30 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * `showToast` again resets the timer; the unmount cleanup clears any
  * pending timer so a fast-closing dialog doesn't leak.
  */
+export type ToastVariant = 'success' | 'error';
+export interface ToastState {
+  message: string;
+  variant: ToastVariant;
+}
+
 export function useToast(durationMs = 1800) {
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Back-compat: `showToast('done')` keeps the old success flash. Pass
+  // `{ variant: 'error', durationMs }` for a longer, red error banner —
+  // used e.g. when a kanban drag couldn't start auto-code.
   const showToast = useCallback(
-    (message: string) => {
+    (
+      message: string,
+      opts?: { variant?: ToastVariant; durationMs?: number },
+    ) => {
       if (timerRef.current) clearTimeout(timerRef.current);
-      setToast(message);
-      timerRef.current = setTimeout(() => setToast(null), durationMs);
+      setToast({ message, variant: opts?.variant ?? 'success' });
+      timerRef.current = setTimeout(
+        () => setToast(null),
+        opts?.durationMs ?? durationMs,
+      );
     },
     [durationMs],
   );

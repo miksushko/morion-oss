@@ -11,7 +11,7 @@
  *   - folders    Folder, FolderViewMode, FolderMcpPermissions, KanbanBoard
  *   - tags       Tag
  *   - search     SearchHit
- *   - settings   workspace MCP, comments, terms, runtime, install, license, audit
+ *   - settings   workspace MCP, comments, terms, runtime, install, audit
  *   - mo         FolderTopic / FolderCatalog / FolderRisks / FolderLogs /
  *                topic cleanup envelopes / finding acks
  *   - concierge  provider, per-pipeline model overrides, per-folder Mo

@@ -29,9 +29,11 @@ export const foldersApi = {
     request<Folder>('/api/folders', { method: 'POST', body: JSON.stringify({ name, parentId }) }),
   renameFolder: (id: string, name: string) =>
     request<Folder>(`/api/folders/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
-  deleteFolder: (id: string, opts: { purgeNotes?: boolean } = {}) =>
-    request<{ ok: boolean; deletedNoteCount: number }>(
-      `/api/folders/${id}${opts.purgeNotes ? '?purgeNotes=true' : ''}`,
+  // Deleting a folder moves its notes to Trash by default. Pass
+  // { keepNotes: true } to instead leave them as unfiled notes.
+  deleteFolder: (id: string, opts: { keepNotes?: boolean } = {}) =>
+    request<{ ok: boolean; trashedNoteCount: number }>(
+      `/api/folders/${id}${opts.keepNotes ? '?keepNotes=true' : ''}`,
       { method: 'DELETE' },
     ),
   reorderFolders: (orderedIds: string[]) =>
@@ -70,8 +72,17 @@ export const foldersApi = {
     noteId: string,
     input: { status: NoteStatus; afterNoteId?: string | null },
   ) =>
-    request<Note>(`/api/notes/${noteId}/kanban-move`, {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
+    // The response is the moved note, plus an optional `autoCode` field
+    // when a drag INTO `todo` triggered an auto-code enqueue that was
+    // rejected for a user-actionable reason (repo missing, agent not
+    // installed, …) — the UI flashes `autoCode.message` so the ticket
+    // doesn't silently sit in `todo`. Absent on success / non-auto-code
+    // folders / non-todo moves.
+    request<Note & { autoCode?: { ok: false; reason: string; message: string } }>(
+      `/api/notes/${noteId}/kanban-move`,
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+    ),
 };

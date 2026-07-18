@@ -14,6 +14,7 @@
 import type { AgentHandle, CliAgentAdapter } from '../harness/adapter.js';
 import type { MoStageDispatcher } from './mo-stage-dispatcher.js';
 import type { WorkflowRunsRepository } from './runs-repository.js';
+import type { WorktreeDiffCapture } from './worktree-diff.js';
 import type {
   CliAgentName,
   WorkflowDefinition,
@@ -42,6 +43,13 @@ export interface WorkflowRunnerDeps {
    *  to `SpawnOptions.transcriptDir`; the file path used by the
    *  adapter is `<transcriptDir>/<sessionId>.jsonl`. */
   transcriptDir: string;
+  /** Deterministic handoff capture ("Mo = router, not narrator",
+   *  2026-07-14): post-stage `git diff --stat` + changed-file list
+   *  against the pre-stage HEAD, enriching cli_agent outputs with
+   *  `diffstat` / `filesChanged` facts for downstream templates.
+   *  Optional — the executor falls back to the real git-backed
+   *  implementation, which silently no-ops on non-repo paths. */
+  worktreeDiff?: WorktreeDiffCapture;
   /** Pre-flight budget guard — runs immediately before the runner
    *  spawns each cli_agent stage. Returning `{allow: false}` short-
    *  circuits the stage with `failed` + the supplied reason recorded

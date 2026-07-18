@@ -13,11 +13,45 @@ import { STATE_BADGES, effectivePathForRow } from './helpers';
 import { MergeConfirmModal } from './MergeConfirmModal';
 import { RunMoreMenu } from './RunMoreMenu';
 
+// States where the agent is still working (or queued to) — the only
+// states where a "Stop" makes sense. Mirrors the active-run guard in
+// the /remove-worktree route.
+const IN_FLIGHT_STATES: ReadonlySet<AutoCodeQueueRow['state']> = new Set([
+  'pending',
+  'fix_running',
+  'fix_review',
+  'review_running',
+  'reopened',
+]);
+
 export function RunStatusBar({ row }: { row: AutoCodeQueueRow }) {
   const badge = STATE_BADGES[row.state];
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [resumeOpen, setResumeOpen] = useState(false);
   const [pathActionError, setPathActionError] = useState<string | null>(null);
+  const [stopping, setStopping] = useState(false);
+  const inFlight = IN_FLIGHT_STATES.has(row.state);
+
+  const onStop = async () => {
+    setPathActionError(null);
+    setStopping(true);
+    try {
+      const res = await api.cancelAutoCodeRun(row.id);
+      if (!res.ok) {
+        setPathActionError(
+          `Stop failed: ${res.message ?? res.error}`,
+        );
+      }
+      // On success the run flips to cancelled; the drawer's poll picks up
+      // the new state. Leave `stopping` true until the row updates so the
+      // button doesn't flicker back to "Stop" mid-teardown.
+    } catch (err) {
+      setStopping(false);
+      setPathActionError(
+        `Stop failed: ${(err as Error).message ?? String(err)}`,
+      );
+    }
+  };
   const path = effectivePathForRow(row);
   const showPathActions = path !== null && isTauri;
   const hasTerminalUI =
@@ -107,6 +141,17 @@ export function RunStatusBar({ row }: { row: AutoCodeQueueRow }) {
         <span className="text-muted-foreground">reopens: {row.reopenCount}</span>
         {row.lastVerdict && (
           <span className="text-muted-foreground">last: {row.lastVerdict}</span>
+        )}
+        {inFlight && (
+          <button
+            type="button"
+            onClick={() => void onStop()}
+            disabled={stopping}
+            className="ml-auto rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-1 text-[11px] font-medium text-destructive hover:bg-destructive/20 disabled:opacity-50"
+            title="Stop the agent now — cancels the run and kills the in-flight process so it stops spending"
+          >
+            {stopping ? 'Stopping…' : 'Stop'}
+          </button>
         )}
         {row.state === 'done' && row.worktreeName && !midMergeOurs && !midMergeForeign && (
           <button
@@ -208,7 +253,7 @@ export function RunStatusBar({ row }: { row: AutoCodeQueueRow }) {
         <span
           className={cn(
             'truncate text-muted-foreground',
-            !hasTerminalUI && 'ml-auto',
+            !hasTerminalUI && !inFlight && 'ml-auto',
           )}
           title={row.repoPath}
         >

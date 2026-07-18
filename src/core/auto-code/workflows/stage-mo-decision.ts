@@ -17,13 +17,47 @@
  * 01KRJYYZ3YE57V1PM06ACBDS0T).
  */
 
-import { findOutboundByLabel } from './runner-helpers.js';
+import { findOutboundByLabel, formatReopenReason } from './runner-helpers.js';
 import type {
   InternalRunState,
   StageExecutorContext,
   TicketContext,
 } from './runner-types.js';
 import type { WorkflowEdge, WorkflowStage } from './types/index.js';
+
+/**
+ * Verbatim reopen ("Mo = router, not narrator", 2026-07-14): the stage
+ * whose output this decision node just evaluated — its most recently
+ * finished inbound predecessor carrying an `output.summary`. On a
+ * loop-back the reopened agent must receive that stage's OWN words
+ * (typically the reviewer's full verdict), not Mo's ≤300-char
+ * routing rationale. Recency is DB-backed (latestAttemptForStage) so
+ * a multi-inbound decision node (e.g. fix + human_gate back-edge)
+ * resolves to whichever source actually ran last, restart-safe.
+ */
+function findDecisionSourceFeedback(
+  repo: StageExecutorContext['deps']['repo'],
+  runId: string,
+  moStageId: string,
+  edges: readonly WorkflowEdge[],
+  stageOutputs: InternalRunState['stageOutputs'],
+): { stageId: string; summary: string } | null {
+  let best: { stageId: string; summary: string; finishedAt: number } | null =
+    null;
+  for (const edge of edges) {
+    if (edge.to !== moStageId) continue;
+    const payload = stageOutputs[edge.from];
+    const summary = (payload?.output as Record<string, unknown> | undefined)
+      ?.summary;
+    if (typeof summary !== 'string' || summary.trim().length === 0) continue;
+    const row = repo.latestAttemptForStage(runId, edge.from);
+    const finishedAt = row?.finishedAt ?? row?.startedAt ?? 0;
+    if (!best || finishedAt >= best.finishedAt) {
+      best = { stageId: edge.from, summary, finishedAt };
+    }
+  }
+  return best ? { stageId: best.stageId, summary: best.summary } : null;
+}
 
 export type MoStageOutcome =
   | { kind: 'terminated' }
@@ -256,11 +290,40 @@ export async function runMoStageNode(
         userReplySource = stageId;
       }
     }
-    const reopenReason = userReply
-      ? `User answered via human_gate: ${userReply}\n\nMo routing rationale: ${dispatchResult.reason}`
-      : dispatchResult.reason;
+    // Verbatim reopen ("Mo = router, not narrator", 2026-07-14):
+    // `reason` carries the deciding source stage's FULL output (the
+    // reviewer's own verdict, banner-wrapped — parity with the linear
+    // path's formatReopenReason) with Mo's one-liner appended as
+    // routing rationale, never replacing it. The pieces stay
+    // individually addressable for templates that want them split:
+    // {{reopen.sourceFeedback}} / {{reopen.moRationale}} /
+    // {{reopen.userReply}}.
+    const sourceFeedback = findDecisionSourceFeedback(
+      repo,
+      state.runId,
+      stage.id,
+      edges,
+      state.stageOutputs,
+    );
+    const reasonParts: string[] = [];
+    if (userReply) {
+      reasonParts.push(`User answered via human_gate: ${userReply}`);
+    }
+    if (sourceFeedback) {
+      reasonParts.push(
+        formatReopenReason(sourceFeedback.summary, sourceFeedback.stageId),
+      );
+    }
+    reasonParts.push(`Mo routing rationale: ${dispatchResult.reason}`);
     state.reopenContext = {
-      reason: reopenReason,
+      reason: reasonParts.join('\n\n'),
+      moRationale: dispatchResult.reason,
+      ...(sourceFeedback
+        ? {
+            sourceStageId: sourceFeedback.stageId,
+            sourceFeedback: sourceFeedback.summary,
+          }
+        : {}),
       fromStageId: stage.id,
       branch,
       ...(userReply ? { userReply } : {}),

@@ -27,6 +27,7 @@
 import type { Hono } from 'hono';
 import { AgentQueueRepository } from '../../../core/auto-code/queue.js';
 import { WorkflowRunsRepository } from '../../../core/auto-code/workflows/runs-repository.js';
+import { buildAutoCodeDispatcher } from '../../features/auto-code-factory/index.js';
 import type { ToolContext } from '../../tools/types.js';
 import {
   projectWorkflowRunAsQueue,
@@ -367,6 +368,35 @@ export function registerAutoCodeRunsRoutes(
         500,
       );
     }
+  });
+
+  // ------- Cancel / Stop an in-flight run -----------------------------
+  // The explicit "Stop" affordance in the AutoCodeDrawer RunStatusBar.
+  // Resolves folderId + ticketId from the run id, then fans a cancel
+  // across BOTH engines via the dispatcher (legacy mo_agent_queue +
+  // workflow_runs). Because buildAutoCodeDispatcher now returns the
+  // process-shared WorkflowRunner (runner-singleton.ts), this reaches the
+  // LIVE cli_agent adapter handle and SIGTERMs the running process —
+  // without the singleton it only flipped the DB flag and let the current
+  // stage burn to completion.
+  app.post('/api/auto-code/runs/:id/cancel', async (c) => {
+    const runId = c.req.param('id');
+    const wfRepo = new WorkflowRunsRepository(ctx.db);
+    const run = wfRepo.getRun(runId);
+    let folderId: string;
+    let ticketId: string;
+    if (run) {
+      folderId = run.folderId;
+      ticketId = run.ticketId;
+    } else {
+      const legacyRow = new AgentQueueRepository(ctx.db).getById(runId);
+      if (!legacyRow) return c.json({ ok: false, error: 'run_not_found' }, 404);
+      folderId = legacyRow.folderId;
+      ticketId = legacyRow.taskId;
+    }
+    const dispatcher = await buildAutoCodeDispatcher(ctx);
+    const summary = await dispatcher.cancelTicket(folderId, ticketId, 'user_stop');
+    return c.json({ ok: true, summary });
   });
 
   // ------- Auto-code run summary (Feature 1 — "What Mo did") ---------

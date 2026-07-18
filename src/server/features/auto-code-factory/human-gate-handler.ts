@@ -6,6 +6,7 @@ import type {
 import type { MoMessengerDispatcher } from '../../../core/auto-code/workflows/mo-messenger-dispatcher.js';
 import type { WorkflowRunsRepository } from '../../../core/auto-code/workflows/runs-repository.js';
 import { AUTO_CODE_ACTOR } from '../../../core/auto-code/actor-constants.js';
+import { extractQuestionBlock } from '../../../core/auto-code/workflows/human-gate-verbatim.js';
 
 /**
  * Phase 5 MVP (ticket 01KRFT0742GY480WFJTAW02Z05) — production
@@ -43,6 +44,24 @@ export function buildHumanGateHandler(deps: {
       // feed for context.
       let summary: string | null = null;
       let question: string | null = null;
+
+      // "Mo = router, not narrator":
+      // if the agent ended its turn with a `QUESTION:` block, that is
+      // the authoritative text the user must see — post it VERBATIM,
+      // not Mo's paraphrase. Mo (when available) only writes a
+      // one-line context preamble; the agent's own words stand.
+      const stageRowsAll = runsRepo.listStagesForRun(args.runId);
+      const lastAgentSummary = [...stageRowsAll]
+        .reverse()
+        .map((s) => {
+          const o = (s.output ?? null) as Record<string, unknown> | null;
+          return s.stageKind === 'cli_agent' && o && typeof o.summary === 'string'
+            ? (o.summary as string)
+            : null;
+        })
+        .find((s): s is string => s !== null) ?? null;
+      const verbatimQuestion = extractQuestionBlock(lastAgentSummary);
+
       if (moMessengerDispatcher) {
         // Pull recent comments + prior stage outputs as Mo's input.
         const noteRow = toolCtx.notes.getById(args.ticketId);
@@ -98,10 +117,31 @@ export function buildHumanGateHandler(deps: {
         needsHuman: true,
         workflowRunId: args.runId,
       });
-      if (summary && question) {
-        // Mo's composed opening — two messages so the chat shows
-        // context-then-question structure naturally. Both are
-        // `assistant` role since Mo is speaking.
+      if (verbatimQuestion) {
+        // Verbatim path: a one-line context preamble (Mo's composed
+        // `summary` when available, else a deterministic lead), then
+        // the agent's OWN question, unedited. The agent's words are
+        // the second message so the user reads them as the ask.
+        const preamble =
+          (summary && summary.trim().length > 0
+            ? summary.trim()
+            : `The agent working on "${args.ticketTitle}" paused to ask you a question:`);
+        toolCtx.concierge.messages.create({
+          sessionId: session.id,
+          role: 'assistant',
+          content: preamble,
+        });
+        toolCtx.concierge.messages.create({
+          sessionId: session.id,
+          role: 'assistant',
+          content: verbatimQuestion,
+        });
+        // The footprint + logging below key off `question`; use the
+        // verbatim text so the ticket excerpt matches what was asked.
+        question = verbatimQuestion;
+      } else if (summary && question) {
+        // No QUESTION marker — Mo's composed opening. Two messages so
+        // the chat shows context-then-question structure naturally.
         toolCtx.concierge.messages.create({
           sessionId: session.id,
           role: 'assistant',

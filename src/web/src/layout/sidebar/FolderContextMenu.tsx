@@ -67,7 +67,7 @@ export function FolderContextMenu({
   onMoveDown: (id: string) => Promise<void> | void;
   onArchive?: (id: string) => Promise<void> | void;
   onUnarchive?: (id: string) => Promise<void> | void;
-  onDelete: (id: string, opts?: { purgeNotes?: boolean }) => Promise<void> | void;
+  onDelete: (id: string, opts?: { keepNotes?: boolean }) => Promise<void> | void;
 }) {
   const confirm = useConfirm();
 
@@ -220,17 +220,16 @@ export function FolderContextMenu({
             if (f.noteCount > 0) {
               const result = await confirm({
                 title: `Delete folder "${f.name}"?`,
-                description:
-                  'By default, notes inside survive — they become unfiled and stay in the workspace.',
+                description: `The ${noteWord} will be moved to Trash (restorable).`,
                 confirmLabel: 'Delete folder',
                 destructive: true,
                 checkbox: {
-                  label: `Also move ${noteWord} to Trash`,
+                  label: 'Keep notes instead (leave them unfiled)',
                 },
               });
               if (result.confirmed)
                 await onDelete(f.id, {
-                  purgeNotes: result.checkboxChecked,
+                  keepNotes: result.checkboxChecked,
                 });
             } else {
               const ok = await confirm({

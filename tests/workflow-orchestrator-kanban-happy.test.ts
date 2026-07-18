@@ -21,6 +21,8 @@ import {
   setupWithKanban,
   buildHappyFactory,
 } from './helpers/workflow-orchestrator-kanban-setup.js';
+import { buildRecentCommentsBlock } from '../src/core/auto-code/workflows/workflow-orchestrator/escalation.js';
+import { AUTO_CODE_ACTOR } from '../src/core/auto-code/actor-constants.js';
 
 /**
  * WorkflowOrchestrator — T7.B.2.b kanban moves + Mo comments (happy)
@@ -144,6 +146,43 @@ describe('WorkflowOrchestrator — T7.B.2.b kanban moves + Mo comments (happy)',
     // Each comment carries the stage-id header so Mo's downstream
     // decision can tell which stage produced which text.
     expect(summaryComments.some((c) => /^📝 \*\*.+\*\*/m.test(c.body))).toBe(true);
+  });
+
+  it('recentComments block includes auto-code comments, caps at 20 newest, clips oversize bodies', async () => {
+    // "Mo = router, not narrator":
+    // ticket comments are the shared agent/user channel — the old
+    // AUTO_CODE_ACTOR filter is gone, replaced by deterministic caps.
+    const ctx = setupWithKanban();
+    const orch = buildOrchestrator(ctx, {
+      runner: new WorkflowRunner({
+        repo: ctx.runsRepo,
+        adapterFactory: () => {
+          throw new Error('not used');
+        },
+        transcriptDir: TRANSCRIPT_DIR,
+      }),
+    });
+
+    ctx.comments.create(ctx.ticketId, 'OLDEST-should-fall-off', 'user');
+    for (let i = 1; i <= 18; i++) {
+      ctx.comments.create(ctx.ticketId, `user note ${i}`, 'user');
+    }
+    ctx.comments.create(
+      ctx.ticketId,
+      'Mo decided: `reopen`. Reviewer cited "missing wall-kick table".',
+      AUTO_CODE_ACTOR,
+    );
+    ctx.comments.create(ctx.ticketId, `giant log ${'z'.repeat(2000)}`, 'user');
+
+    const block = buildRecentCommentsBlock(orch, ctx.ticketId);
+    // Auto-code's own comment is visible — it is the cross-run/agent channel.
+    expect(block).toContain('missing wall-kick table');
+    // 20-newest window: the 21st (oldest) comment fell off.
+    expect(block).not.toContain('OLDEST-should-fall-off');
+    expect(block).toContain('user note 1');
+    // Oversize body clipped with an explicit marker.
+    expect(block).toContain('[comment truncated]');
+    expect(block).not.toContain('z'.repeat(1500));
   });
 
 });

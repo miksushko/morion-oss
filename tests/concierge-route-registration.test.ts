@@ -127,6 +127,7 @@ const EXPECTED_ROUTES: ReadonlyArray<readonly [string, string]> = [
   ['GET', '/api/auto-code/runs/:id/files'],
   ['GET', '/api/auto-code/runs/:id/files/content'],
   ['POST', '/api/auto-code/runs/:id/remove-worktree'],
+  ['POST', '/api/auto-code/runs/:id/cancel'],
   // auto-code runs (MERGE family — 5 mutating handlers)
   ['POST', '/api/auto-code/runs/:id/merge'],
   ['POST', '/api/auto-code/runs/:id/merge-conflict-prepare'],

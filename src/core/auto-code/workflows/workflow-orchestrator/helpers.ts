@@ -15,6 +15,7 @@ import { existsSync } from 'node:fs';
 
 import type { WorkflowDefinition } from '../types/index.js';
 import type { EnsureWorktreeArgs } from './types.js';
+import { withRepoGitLock } from './repo-git-lock.js';
 
 /** Build a human-readable summary of the cli_agent chain for Mo
  *  comments — e.g. `claude (fix) → codex (review)`. Non-cli stages
@@ -64,15 +65,25 @@ export function findReopenTargetStageId(def: WorkflowDefinition): string | null 
 export function collectRequiredAgents(def: WorkflowDefinition): readonly string[] {
   const required = new Set<string>();
   const optional = new Set<string>();
+  // Mirror `splitAgents` in templates.ts: a stage WITH a fallback
+  // makes its PRIMARY optional (the run can complete on the fallback)
+  // and the FALLBACK required. A stage WITHOUT a fallback makes its
+  // primary required. The old code had this inverted — it marked the
+  // primary required and the fallback optional, so a folder on the
+  // default template (codex review + claude fallback) was rejected
+  // with `agent_unavailable` on any machine without a sidecar-
+  // detectable codex, defeating the whole point of the fallback.
   for (const s of def.stages) {
-    if (s.kind === 'cli_agent') {
+    if (s.kind !== 'cli_agent') continue;
+    if (s.fallbackAgent) {
+      optional.add(s.agent);
+      required.add(s.fallbackAgent);
+    } else {
       required.add(s.agent);
-      if (s.fallbackAgent) optional.add(s.fallbackAgent);
     }
   }
-  // Optional agents (fallback) aren't strictly required — the
-  // primary agent might suffice. Strip them from the required
-  // set if they're listed as optional too.
+  // A primary that's required by some other (fallback-less) stage
+  // outranks its optional status here.
   for (const r of required) optional.delete(r);
   return Array.from(required);
 }
@@ -91,13 +102,12 @@ export function formatActor(actor: string): string {
 export async function defaultEnsureWorktree(args: EnsureWorktreeArgs): Promise<void> {
   if (existsSync(args.worktreePath)) return;
   const branch = sanitiseBranchName(args.worktreeName);
-  await execGit(args.repoPath, [
-    'worktree',
-    'add',
-    args.worktreePath,
-    '-b',
-    branch,
-  ]);
+  // Serialise `worktree add` per repo — concurrent enqueues (N tickets
+  // dragged to todo at once) otherwise race on the shared `.git` admin
+  // area and a loser fails with a lock error. See repo-git-lock.ts.
+  await withRepoGitLock(args.repoPath, () =>
+    execGit(args.repoPath, ['worktree', 'add', args.worktreePath, '-b', branch]),
+  );
 }
 
 /**
@@ -107,12 +117,16 @@ export async function defaultEnsureWorktree(args: EnsureWorktreeArgs): Promise<v
 export async function defaultCleanupWorktree(args: EnsureWorktreeArgs): Promise<void> {
   if (!existsSync(args.worktreePath)) return;
   try {
-    await execGit(args.repoPath, [
-      'worktree',
-      'remove',
-      '--force',
-      args.worktreePath,
-    ]);
+    // Same per-repo lock as `worktree add` — remove mutates the same
+    // `.git` admin area and must not race a concurrent add/remove.
+    await withRepoGitLock(args.repoPath, () =>
+      execGit(args.repoPath, [
+        'worktree',
+        'remove',
+        '--force',
+        args.worktreePath,
+      ]),
+    );
   } catch {
     // Best-effort; orphan sweep on next startup picks up stragglers.
   }

@@ -288,9 +288,15 @@ describe('HTTP /api/concierge/folders/:id/settings', () => {
       templates: { id: string; label: string; agentChain: string[] }[];
     };
     const ids = body.templates.map((t) => t.id);
-    // Post-trim (ticket 01KRWRHFAK7HPQYV8GN72BW2VC): registry ships
-    // exactly 3 base templates.
-    expect(ids).toEqual(['plan-and-review-v2', 'default-v2', 'code-only-v2']);
+    // 5 canonical flows (Mo Workflows epic)
+    // in decreasing-complexity order.
+    expect(ids).toEqual([
+      'plan-and-review-v2',
+      'fix-review-docs-qa-v2',
+      'fix-review-docs-v2',
+      'default-v2',
+      'code-only-v2',
+    ]);
   });
   // -- Auto-code preflight (sub-ticket 01KQEEARKNH9TE8D008WAX7PQ7) ---------
   it('Preflight route returns 404 for unknown folder', async () => {

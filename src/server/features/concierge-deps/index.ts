@@ -49,6 +49,7 @@ export type {
   ConciergeDepsHost,
   ConfiguredProvider,
   MergeResolverModels,
+  WorkflowBuilderModels,
   GatherModels,
 } from './types.js';
 
@@ -79,6 +80,8 @@ export {
   gatherSynthesisThoroughModelKey,
   mergeResolverModelKey,
   mergeResolverFallbackKey,
+  workflowBuilderModelKey,
+  workflowBuilderFallbackKey,
 } from './model-keys.js';
 
 export {
@@ -87,6 +90,8 @@ export {
   GATHER_SYNTHESIS_THOROUGH_RECOMMENDED,
   MERGE_RESOLVER_PRIMARY_RECOMMENDED,
   MERGE_RESOLVER_FALLBACK_RECOMMENDED,
+  WORKFLOW_BUILDER_PRIMARY_RECOMMENDED,
+  WORKFLOW_BUILDER_FALLBACK_RECOMMENDED,
 } from './recommended-models.js';
 
 export {
@@ -94,6 +99,7 @@ export {
   resolveMoIndexingProvider,
   resolveGatherProvider,
   resolveMergeResolverModels,
+  resolveWorkflowBuilderModels,
   resolveGatherModels,
 } from './indexing-deps.js';
 

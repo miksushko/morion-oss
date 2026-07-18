@@ -112,6 +112,14 @@ export function TagPicker({ allTags, selected, onToggle, onCreateTag, onClose }:
             }
           }}
           placeholder="Search or create tag…"
+          // A tag name isn't prose — kill the native
+          // autocomplete/autofill dropdown + the macOS/WebKit autocorrect
+          // suggestion bubble ("Bug | ×") that otherwise overlaps the tag
+          // list and steals clicks.
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring"
         />
       </div>
@@ -164,6 +172,10 @@ export function TagPicker({ allTags, selected, onToggle, onCreateTag, onClose }:
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="Tag name"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
               className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               autoFocus
             />

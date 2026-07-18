@@ -18,3 +18,9 @@ export const GATHER_SYNTHESIS_THOROUGH_RECOMMENDED = 'deepseek/deepseek-v4-pro';
 
 export const MERGE_RESOLVER_PRIMARY_RECOMMENDED = 'deepseek/deepseek-v4-pro';
 export const MERGE_RESOLVER_FALLBACK_RECOMMENDED = 'anthropic/claude-sonnet-4';
+
+// Workflow builder (mo_build_workflow) — schema-heavy structured JSON
+// authoring; benefits from a stronger model than the chat tier, same
+// class as the merge resolver.
+export const WORKFLOW_BUILDER_PRIMARY_RECOMMENDED = 'deepseek/deepseek-v4-pro';
+export const WORKFLOW_BUILDER_FALLBACK_RECOMMENDED = 'anthropic/claude-sonnet-4';

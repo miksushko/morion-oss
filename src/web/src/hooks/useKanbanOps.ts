@@ -150,7 +150,13 @@ export function useKanbanOps(args: {
       });
 
       try {
-        await api.moveTaskInKanban(noteId, { status, afterNoteId });
+        const res = await api.moveTaskInKanban(noteId, { status, afterNoteId });
+        // Explicit feedback when a drag into `todo` couldn't start
+        // auto-code (linked repo missing, agent not installed, …) —
+        // otherwise the ticket just sits there with no signal.
+        if (res.autoCode?.ok === false) {
+          showToast(res.autoCode.message, { variant: 'error', durationMs: 7000 });
+        }
       } catch (err) {
         console.error('kanban move failed', err);
         showToast('Could not move card');

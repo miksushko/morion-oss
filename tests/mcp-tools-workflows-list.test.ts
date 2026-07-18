@@ -10,8 +10,7 @@ import { writeFolderWorkflowTemplate } from '../src/server/features/auto-code-te
  *
  * Surfaces every workflow available for a folder (built-in templates
  * + custom rows) so an agent can pick the right one before assigning
- * it per-ticket via `notes_update({workflowId})`. Pro-gated;
- * read-only.
+ * it per-ticket via `notes_update({workflowId})`. Read-only.
  */
 
 describe('MCP tools — workflows_list', () => {

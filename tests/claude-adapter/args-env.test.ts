@@ -44,6 +44,10 @@ describe('ClaudeAdapter (L1.T3) — args / env propagation', () => {
     expect(log.args).toContain('Read,Glob');
     expect(log.args).toContain('--permission-mode');
     expect(log.args).toContain('acceptEdits');
+    // MCP isolation — the spawned claude must NOT inherit the operator's
+    // global/project MCP fleet (headless auth servers hang at startup →
+    // exit 1, $0; worst under parallel fan-out).
+    expect(log.args).toContain('--strict-mcp-config');
     // No --bare per pinned lesson (preserves OAuth Max).
     expect(log.args).not.toContain('--bare');
     // No --worktree at the harness layer (caller owns cwd).

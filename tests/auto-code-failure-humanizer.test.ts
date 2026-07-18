@@ -70,6 +70,31 @@ describe('humanizeFailureReason', () => {
     expect(out.detail).toContain('Settings → Limits');
   });
 
+  it('budget_guard_denied + "Mo monthly budget exhausted" → budget-cap copy', () => {
+    for (const raw of [
+      'budget_guard_denied: stage cap $1.00 would be exceeded',
+      'Mo monthly budget exhausted: $10.00 / $10. Workflow paused at `mo_start`.',
+    ]) {
+      expect(humanizeFailureReason(raw).headline.toLowerCase()).toContain(
+        'budget cap reached',
+      );
+    }
+  });
+
+  it('parse_failed → "no parseable output" copy, NOT a budget mislabel even when the raw echoes "budget"', () => {
+    // Regression: the agent failed with parse_failed and its echoed
+    // prompt carried a pasted skill mentioning "monthly $10 budget".
+    // The old `includes('budget')` branch shadowed this as a budget
+    // cap, sending debugging down a non-existent-limit path.
+    const raw =
+      'parse_failed: ...the skill text... monthly $10 budget ... hard cap $0.10 ...';
+    const out = humanizeFailureReason(raw);
+    expect(out.headline.toLowerCase()).toContain('no parseable output');
+    expect(out.headline.toLowerCase()).not.toContain('budget cap');
+    expect(out.detail).toContain('Folder Settings → Workflows');
+    expect(out.raw).toBe(raw);
+  });
+
   it('reopen_cap_exhausted → reviewer-loop framing', () => {
     const out = humanizeFailureReason('reopen_cap_exhausted: max 3 attempts');
     expect(out.headline.toLowerCase()).toContain('reviewer kept reopening');

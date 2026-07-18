@@ -14,28 +14,31 @@ import { parseDraftWorkflow } from '../src/core/auto-code/workflows/parse-linear
 
 /**
  * Registry tests under the Editor Model v2 spec (Morion note
- * 01KRAQWPXR5AYTFVF6J12TYHJ1) AFTER the 3-template trim
- * (ticket 01KRWRHFAK7HPQYV8GN72BW2VC).
+ * 01KRAQWPXR5AYTFVF6J12TYHJ1). Trimmed to 3 base shapes in ticket
+ * 01KRWRHFAK7HPQYV8GN72BW2VC, extended to 5 composition-distinct
+ * flows in the Mo Workflows epic:
  *
- * Shipped templates:
- *   1. plan-and-review-v2 — plan + plan_review + code + code_review
- *      (4 cli agents, Mo between each, human-in-loop after fix)
- *   2. default-v2        — code + code_review (2 cli agents, Mo,
- *      human-in-loop after fix). The "balanced" default.
- *   3. code-only-v2      — single cli agent, Mo at start + end,
- *      human-in-loop after fix.
+ *   1. plan-and-review-v2     — plan + plan_review + code + code_review
+ *   2. fix-review-docs-qa-v2  — code + review + docs + QA
+ *   3. fix-review-docs-v2     — code + review + docs
+ *   4. default-v2             — code + code_review. The default.
+ *   5. code-only-v2           — single cli agent, Mo at start + end.
  *
- * Every template is a v2 draft — the L2 linear runner can't dispatch
- * them; the Phase 4 DAG runner is the consumer.
  * resolveWorkflowDefinition's miss path falls back to
  * LEGACY_LINEAR_AUTOCODE_DEFINITION so unconfigured / unknown-id
- * folders keep working through the L2 runner until Phase 4 ships.
+ * folders keep working through the L2 runner.
  */
 
-describe('workflow templates registry (v2, 3-template trim)', () => {
-  it('lists exactly the 3 base templates', () => {
+describe('workflow templates registry (v2, 5 canonical flows)', () => {
+  it('lists exactly the 5 canonical flows in decreasing-complexity order', () => {
     const ids = listWorkflowTemplates().map((t) => t.id);
-    expect(ids).toEqual(['plan-and-review-v2', DEFAULT_TEMPLATE_ID, 'code-only-v2']);
+    expect(ids).toEqual([
+      'plan-and-review-v2',
+      'fix-review-docs-qa-v2',
+      'fix-review-docs-v2',
+      DEFAULT_TEMPLATE_ID,
+      'code-only-v2',
+    ]);
   });
 
   it('DEFAULT_TEMPLATE_ID stays at "default-v2" (folder settings keyed on it)', () => {
@@ -131,6 +134,103 @@ describe('workflow templates registry (v2, 3-template trim)', () => {
       'mo_start',
       'mo_tools',
     ]);
+  });
+
+  it('fix-review-docs-v2 has 3 cli_agent stages + 5 Mo stages (mo_after_docs, no QA)', () => {
+    const meta = getWorkflowTemplate('fix-review-docs-v2');
+    expect(meta).not.toBeNull();
+    expect(meta!.agentChain).toEqual(['claude', 'codex', 'claude']);
+    const cliStages = meta!.definition.stages.filter((s) => s.kind === 'cli_agent');
+    expect(cliStages.map((s) => s.id).sort()).toEqual(['docs', 'fix', 'review']);
+    const moStages = meta!.definition.stages.filter((s) => s.kind === 'mo_stage');
+    expect(moStages.map((s) => s.id).sort()).toEqual([
+      'mo_after_docs',
+      'mo_after_fix',
+      'mo_after_review',
+      'mo_start',
+      'mo_tools',
+    ]);
+    // Review approval routes into docs, not straight to mo_tools.
+    const approveEdge = meta!.definition.edges.find(
+      (e) => e.from === 'mo_after_review' && e.on === 'approve',
+    );
+    expect(approveEdge?.to).toBe('docs');
+    // Docs decision advances to mo_tools and can reopen the docs agent.
+    const finishEdge = meta!.definition.edges.find(
+      (e) => e.from === 'mo_after_docs' && e.on === 'finish',
+    );
+    expect(finishEdge?.to).toBe('mo_tools');
+    const reopenEdge = meta!.definition.edges.find(
+      (e) => e.from === 'mo_after_docs' && e.on === 'reopen',
+    );
+    expect(reopenEdge?.to).toBe('docs');
+  });
+
+  it('fix-review-docs-qa-v2 has 4 cli_agent stages + 6 Mo stages and chains docs → qa → mo_tools', () => {
+    const meta = getWorkflowTemplate('fix-review-docs-qa-v2');
+    expect(meta).not.toBeNull();
+    expect(meta!.agentChain).toEqual(['claude', 'codex', 'claude', 'claude']);
+    const cliStages = meta!.definition.stages.filter((s) => s.kind === 'cli_agent');
+    expect(cliStages.map((s) => s.id).sort()).toEqual([
+      'docs',
+      'fix',
+      'qa',
+      'review',
+    ]);
+    const moStages = meta!.definition.stages.filter((s) => s.kind === 'mo_stage');
+    expect(moStages.map((s) => s.id).sort()).toEqual([
+      'mo_after_docs',
+      'mo_after_fix',
+      'mo_after_qa',
+      'mo_after_review',
+      'mo_start',
+      'mo_tools',
+    ]);
+    const edges = meta!.definition.edges;
+    // docs decision advances into qa (labelled "qa"), qa decision
+    // finishes into mo_tools, and both stages have reopen back-edges.
+    expect(
+      edges.find((e) => e.from === 'mo_after_docs' && e.on === 'qa')?.to,
+    ).toBe('qa');
+    expect(
+      edges.find((e) => e.from === 'mo_after_qa' && e.on === 'finish')?.to,
+    ).toBe('mo_tools');
+    expect(
+      edges.find((e) => e.from === 'mo_after_qa' && e.on === 'reopen')?.to,
+    ).toBe('qa');
+  });
+
+  it('shipped fix + review prompts wire the deterministic channels (priorRuns + diffstat)', () => {
+    // "Mo = router, not narrator" epic — every fixer prompt reads
+    // prior-run memory; every reviewer/docs/qa prompt reads the
+    // fixer's diffstat facts. Guards against a template edit dropping
+    // the channels.
+    for (const tpl of listWorkflowTemplates()) {
+      const cliStages = tpl.definition.stages.filter(
+        (s): s is Extract<typeof s, { kind: 'cli_agent' }> =>
+          s.kind === 'cli_agent',
+      );
+      const fixLike = cliStages.filter(
+        (s) => s.id === 'fix' || s.id === 'plan',
+      );
+      for (const s of fixLike) {
+        expect(
+          s.promptTemplate,
+          `${tpl.id}/${s.id} should read {{ticket.priorRuns}}`,
+        ).toContain('{{ticket.priorRuns}}');
+      }
+      const reviewLike = cliStages.filter((s) =>
+        ['review', 'docs', 'qa', 'plan_review'].includes(s.id),
+      );
+      for (const s of reviewLike) {
+        // plan_review reviews the PLAN (no diff yet) — exempt.
+        if (s.id === 'plan_review') continue;
+        expect(
+          s.promptTemplate,
+          `${tpl.id}/${s.id} should read {{stages.fix.output.diffstat}}`,
+        ).toContain('{{stages.fix.output.diffstat}}');
+      }
+    }
   });
 
   it('getWorkflowTemplate returns null on unknown / retired ids', () => {

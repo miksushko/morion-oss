@@ -60,6 +60,43 @@ describe('HTTP /api/concierge/provider', () => {
     expect(ctx.settings.get('concierge.model', '')).toBe('llama-3.3-70b-versatile');
   });
 
+  it('pipeline-models round-trips the workflow-builder fields per-backend (Mo Workflows epic)', async () => {
+    activatePro(ctx.settings);
+    const put = await ctx.app.request(
+      '/api/concierge/pipeline-models',
+      json(
+        {
+          workflowBuilder: 'deepseek/deepseek-v4-pro',
+          workflowBuilderFallback: 'anthropic/claude-sonnet-4',
+        },
+        'PUT',
+      ),
+    );
+    expect(put.status).toBe(200);
+    const body = (await put.json()) as {
+      values: { workflowBuilder: string; workflowBuilderFallback: string };
+      recommended: { workflowBuilder: string };
+    };
+    expect(body.values.workflowBuilder).toBe('deepseek/deepseek-v4-pro');
+    expect(body.values.workflowBuilderFallback).toBe('anthropic/claude-sonnet-4');
+    // Stored under the per-backend key (default backend = groq).
+    expect(ctx.settings.get('concierge.groq_workflow_builder_model', '')).toBe(
+      'deepseek/deepseek-v4-pro',
+    );
+    expect(
+      ctx.settings.get('concierge.groq_workflow_builder_model_fallback', ''),
+    ).toBe('anthropic/claude-sonnet-4');
+    // Non-defaults backend → no recommended placeholder (typing aid is
+    // OpenRouter-only, per the no-hardcoded-defaults rule).
+    expect(body.recommended.workflowBuilder).toBe('');
+
+    const get = await ctx.app.request('/api/concierge/pipeline-models');
+    const fetched = (await get.json()) as {
+      values: { workflowBuilder: string };
+    };
+    expect(fetched.values.workflowBuilder).toBe('deepseek/deepseek-v4-pro');
+  });
+
   it('keeps OpenRouter key/model separate when backend is switched', async () => {
     activatePro(ctx.settings);
     const res = await ctx.app.request(

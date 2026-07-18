@@ -6,8 +6,8 @@ import {
 } from '../helpers/concierge-http-setup.js';
 
 /**
- * GET /api/auto-code/workflows — auth + query gates.
- * Pro-required + folderId-required preconditions.
+ * GET /api/auto-code/workflows — query gate.
+ * folderId-required precondition.
  */
 describe('HTTP /api/auto-code/workflows — seeding · gates', () => {
   let ctx: Ctx;

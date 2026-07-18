@@ -59,9 +59,7 @@ export function useAppDialogs(args: {
   /**
    * Open the AI Access dialog for a NOTE. Folder-level AI access has
    * moved into FolderSettingsDialog (tab=ai-access); only notes still
-   * use the standalone dialog. License-tier branching (Pro → perms
-   * dialog, Free → upsell) is wired by AppDialogsLayer based on the
-   * `aiAccessTarget` slot.
+   * use the standalone dialog.
    */
   const requestAIAccess = useCallback(
     (target: { kind: 'note'; note: Note; folder: Folder | null }) => {

@@ -5,7 +5,8 @@
  * - GET/PUT /api/concierge/provider          — backend + api key + model.
  * - GET/PUT /api/concierge/pipeline-models   — per-backend pipeline
  *     model overrides (tier1/tier2/subagent/synthesis/topic-hygiene/
- *     merge-resolver — 11 fields, single Zod patch shape).
+ *     merge-resolver/workflow-builder — 13 fields, single Zod patch
+ *     shape).
  * - GET/PUT /api/concierge/mo                — Mo personality + schedule.
  * - GET     /api/concierge/budget            — Mo chat-side monthly cap status.
  *
@@ -21,7 +22,7 @@
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import {
-  MO_INDEXING_REQUIRED_BACKEND,
+  MO_INDEXING_DEFAULTS_BACKEND,
   MO_INDEXING_TIER1_MODEL,
   MO_INDEXING_TIER1_FALLBACK,
   MO_INDEXING_TIER2_MODEL,
@@ -34,6 +35,8 @@ import {
   GATHER_SYNTHESIS_THOROUGH_RECOMMENDED,
   MERGE_RESOLVER_PRIMARY_RECOMMENDED,
   MERGE_RESOLVER_FALLBACK_RECOMMENDED,
+  WORKFLOW_BUILDER_PRIMARY_RECOMMENDED,
+  WORKFLOW_BUILDER_FALLBACK_RECOMMENDED,
   gatherSubagentModelKey,
   gatherSynthesisModelKey,
   gatherSynthesisThoroughModelKey,
@@ -47,6 +50,8 @@ import {
   tier2ModelKey,
   topicHygieneFallbackKey,
   topicHygieneModelKey,
+  workflowBuilderFallbackKey,
+  workflowBuilderModelKey,
 } from '../../features/concierge-deps/index.js';
 import {
   MO_BUDGET_SETTING_KEY,
@@ -80,6 +85,8 @@ const pipelineModelsPatchSchema = z.object({
   topicHygieneFallback: pipelineModelField,
   mergeResolver: pipelineModelField,
   mergeResolverFallback: pipelineModelField,
+  workflowBuilder: pipelineModelField,
+  workflowBuilderFallback: pipelineModelField,
 });
 
 const moPersonalitySchema = z.object({
@@ -186,25 +193,27 @@ export function registerProviderSettingsRoutes(
   // ------- Per-pipeline model overrides (Phase 3.5 of epic ----------
   //         01KPGWTJCWVBQCCSQ8NGSB19KQ — Settings unification) ---------
   //
-  // Each of the 11 per-pipeline knobs is optional — empty string means
-  // "fall back to indexing tier1/tier2 default". Resolution lives in
-  // concierge-deps.ts; UI surfaces them in Mo Agent → API & Provider.
-  //
-  // Gated to OpenRouter today — the underlying resolvers all bail for
-  // non-OpenRouter backends per `MO_INDEXING_REQUIRED_BACKEND`. Route
-  // still accepts writes for any backend; UI hides the section unless
-  // backend === 'openrouter'.
-  // DRY: single shape-builder used by both GET + PUT response so the
-  // 11 setting keys + their recommended placeholders stay in one
+  // Each of the 11 per-pipeline knobs is optional. On OpenRouter an
+  // empty field falls back to a curated built-in default; on every
+  // other backend tier1 + tier2 are REQUIRED (no built-in defaults).
+  // Resolution lives in concierge-deps.ts; UI surfaces them in Mo Agent
+  // → API & Provider for ALL backends now (Mo runs on any configured
+  // backend). DRY: single shape-builder used by both GET + PUT response
+  // so the 11 setting keys + their recommended placeholders stay in one
   // place and don't drift apart.
   const buildPipelineModelsResponse = (
     backend: ReturnType<typeof readBackend>,
   ) => {
     const get = (key: string): string =>
       ctx.settings.get<string>(key, '') ?? '';
+    // OpenRouter ships curated model recommendations; for other backends
+    // we don't suggest ids (vendor-specific, and OpenRouter's namespaced
+    // ids would 404 there) — the user fills tier1/tier2 in themselves.
+    const isDefaultsBackend = backend === MO_INDEXING_DEFAULTS_BACKEND;
+    const rec = (id: string): string => (isDefaultsBackend ? id : '');
     return {
       backend,
-      pipelinesSupported: backend === MO_INDEXING_REQUIRED_BACKEND,
+      pipelinesSupported: true,
       values: {
         tier1: get(tier1ModelKey(backend)),
         tier1Fallback: get(tier1FallbackKey(backend)),
@@ -217,6 +226,8 @@ export function registerProviderSettingsRoutes(
         topicHygieneFallback: get(topicHygieneFallbackKey(backend)),
         mergeResolver: get(mergeResolverModelKey(backend)),
         mergeResolverFallback: get(mergeResolverFallbackKey(backend)),
+        workflowBuilder: get(workflowBuilderModelKey(backend)),
+        workflowBuilderFallback: get(workflowBuilderFallbackKey(backend)),
       },
       // Recommended placeholders: the model id we'd suggest if the
       // user wanted to override. Different from the FALLBACK the
@@ -225,17 +236,19 @@ export function registerProviderSettingsRoutes(
       // only — never a shipped default per the "no hardcoded model
       // defaults" CLAUDE.md rule.
       recommended: {
-        tier1: MO_INDEXING_TIER1_MODEL,
-        tier1Fallback: MO_INDEXING_TIER1_FALLBACK,
-        tier2: MO_INDEXING_TIER2_MODEL,
-        tier2Fallback: MO_INDEXING_TIER2_FALLBACK,
-        subagent: GATHER_SUBAGENT_RECOMMENDED,
-        synthesis: GATHER_SYNTHESIS_DEFAULT_RECOMMENDED,
-        synthesisThorough: GATHER_SYNTHESIS_THOROUGH_RECOMMENDED,
-        topicHygiene: MO_INDEXING_TOPIC_HYGIENE_RECOMMENDED,
+        tier1: rec(MO_INDEXING_TIER1_MODEL),
+        tier1Fallback: rec(MO_INDEXING_TIER1_FALLBACK),
+        tier2: rec(MO_INDEXING_TIER2_MODEL),
+        tier2Fallback: rec(MO_INDEXING_TIER2_FALLBACK),
+        subagent: rec(GATHER_SUBAGENT_RECOMMENDED),
+        synthesis: rec(GATHER_SYNTHESIS_DEFAULT_RECOMMENDED),
+        synthesisThorough: rec(GATHER_SYNTHESIS_THOROUGH_RECOMMENDED),
+        topicHygiene: rec(MO_INDEXING_TOPIC_HYGIENE_RECOMMENDED),
         topicHygieneFallback: '',
-        mergeResolver: MERGE_RESOLVER_PRIMARY_RECOMMENDED,
-        mergeResolverFallback: MERGE_RESOLVER_FALLBACK_RECOMMENDED,
+        mergeResolver: rec(MERGE_RESOLVER_PRIMARY_RECOMMENDED),
+        mergeResolverFallback: rec(MERGE_RESOLVER_FALLBACK_RECOMMENDED),
+        workflowBuilder: rec(WORKFLOW_BUILDER_PRIMARY_RECOMMENDED),
+        workflowBuilderFallback: rec(WORKFLOW_BUILDER_FALLBACK_RECOMMENDED),
       },
     };
   };
@@ -263,6 +276,8 @@ export function registerProviderSettingsRoutes(
       [patch.topicHygieneFallback, topicHygieneFallbackKey(backend)],
       [patch.mergeResolver, mergeResolverModelKey(backend)],
       [patch.mergeResolverFallback, mergeResolverFallbackKey(backend)],
+      [patch.workflowBuilder, workflowBuilderModelKey(backend)],
+      [patch.workflowBuilderFallback, workflowBuilderFallbackKey(backend)],
     ];
     for (const [value, key] of writes) {
       if (value !== undefined) {

@@ -141,4 +141,55 @@ describe('WorkflowOrchestrator — Codex T7.A review regressions', () => {
     const out = await orch.enqueueTicket(ctx.ticketId, ctx.folderId);
     expect(out.kind).toBe('enqueued');
   });
+
+  // Per-folder concurrency override (migration 0040) wins over the
+  // workspace default.
+  it('per-folder autoCodeConcurrency overrides the workspace default cap', async () => {
+    const ctx = setup();
+    ctx.folderSettings.update(ctx.folderId, {
+      enabled: true,
+      autoCodeEnabled: true,
+      linkedRepoPath: REPO_PATH,
+      autoCodeConcurrency: 1,
+    });
+    // One distinct active run already saturates a per-folder cap of 1,
+    // even though the orchestrator's workspace default is 5.
+    const t2 = ctx.notes.create(
+      { body: '# T2', folderId: ctx.folderId, source: 'user' },
+      'user',
+    );
+    const minimalSnapshot = {
+      schemaVersion: 1 as const,
+      name: 'seed',
+      description: '',
+      stages: [
+        {
+          id: 'a',
+          kind: 'cli_agent' as const,
+          agent: 'claude' as const,
+          promptTemplate: 'a',
+          maxBudgetUsd: null,
+          maxAttempts: 1,
+          allowedTools: [] as string[],
+        },
+      ],
+      edges: [],
+    };
+    ctx.runsRepo.createRun({
+      folderId: ctx.folderId,
+      ticketId: t2.id,
+      graphSnapshot: minimalSnapshot,
+      repoPath: REPO_PATH,
+      worktreePath: `${REPO_PATH}/.morion/worktrees/x2`,
+      initialStatus: 'running',
+    });
+
+    const orch = buildOrchestrator(ctx, { maxInflightPerFolder: 5 });
+    const out = await orch.enqueueTicket(ctx.ticketId, ctx.folderId);
+    expect(out.kind).toBe('rejected');
+    if (out.kind === 'rejected') {
+      expect(out.reason).toBe('folder_cap_exceeded');
+      expect(out.missingDetails?.[0]).toMatch(/1 active runs.*cap 1/);
+    }
+  });
 });

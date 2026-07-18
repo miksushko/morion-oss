@@ -33,6 +33,13 @@ export function AutoCodeMainSection({
   const [resolution, setResolution] = useState<AutoCodeWorkflowResolution | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hydratedRef = useRef(false);
+  const [concDraft, setConcDraft] = useState(
+    settings.autoCodeConcurrency != null
+      ? String(settings.autoCodeConcurrency)
+      : '',
+  );
+  const [savingConc, setSavingConc] = useState(false);
+  const concDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!hydratedRef.current) {
@@ -43,6 +50,13 @@ export function AutoCodeMainSection({
 
   useEffect(() => {
     hydratedRef.current = false;
+    setConcDraft(
+      settings.autoCodeConcurrency != null
+        ? String(settings.autoCodeConcurrency)
+        : '',
+    );
+    // Re-seed the draft from the freshly-loaded folder's settings.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [folderId]);
 
   useEffect(() => {
@@ -122,6 +136,32 @@ export function AutoCodeMainSection({
 
   const onPickActive = async (workflowId: string) => {
     await persist({ workflowTemplate: workflowId });
+  };
+
+  const onChangeConcurrency = (raw: string) => {
+    setConcDraft(raw);
+    if (concDebounceRef.current) clearTimeout(concDebounceRef.current);
+    concDebounceRef.current = setTimeout(() => {
+      const trimmed = raw.trim();
+      if (trimmed === '') {
+        // Blank clears back to the workspace default (5).
+        setSavingConc(true);
+        void persist({ autoCodeConcurrency: null }).finally(() =>
+          setSavingConc(false),
+        );
+        return;
+      }
+      const n = Number.parseInt(trimmed, 10);
+      if (!Number.isFinite(n) || n < 1 || n > 20) {
+        setError('Max concurrent runs must be a whole number between 1 and 20.');
+        return;
+      }
+      setError(null);
+      setSavingConc(true);
+      void persist({ autoCodeConcurrency: n }).finally(() =>
+        setSavingConc(false),
+      );
+    }, 700);
   };
 
   // Resolve dropdown's active value with the same fallback logic the
@@ -242,6 +282,37 @@ export function AutoCodeMainSection({
             </div>
           </div>
         )}
+      </div>
+
+      <div className="space-y-1.5">
+        <div className="flex items-baseline justify-between">
+          <label htmlFor="ac-concurrency" className="text-[12px] font-medium">
+            Max concurrent runs
+          </label>
+          <span className="text-[10px] text-muted-foreground/70">
+            {savingConc
+              ? 'Saving…'
+              : settings.autoCodeConcurrency != null
+                ? 'Custom'
+                : 'Default (5)'}
+          </span>
+        </div>
+        <input
+          id="ac-concurrency"
+          type="number"
+          min={1}
+          max={20}
+          value={concDraft}
+          onChange={(e) => onChangeConcurrency(e.target.value)}
+          placeholder="5"
+          disabled={disabled}
+          className="w-24 rounded-md border border-border bg-background px-3 py-2 text-[12px] text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:opacity-50"
+        />
+        <p className="text-[11px] text-muted-foreground">
+          How many tickets in this folder may run agents at the same
+          time. Extra tickets dragged to <code>todo</code> wait until a
+          slot frees up. Leave blank for the default (5).
+        </p>
       </div>
 
       {error && (

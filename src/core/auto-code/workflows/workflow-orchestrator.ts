@@ -135,7 +135,10 @@ export class WorkflowOrchestrator {
     this.cleanupWorktreeFn = deps.cleanupWorktree ?? defaultCleanupWorktree;
     this.generateWorktreeName =
       deps.generateWorktreeName ?? (() => `${WORKTREE_NAME_PREFIX}${ulid().toLowerCase()}`);
-    this.recentCommentsLimit = deps.recentCommentsLimit ?? 5;
+    // 20 since "Mo = router, not narrator" (2026-07-14) — comments are
+    // the shared agent/user channel and auto-code's own comments are no
+    // longer filtered out, so the window needs room for both.
+    this.recentCommentsLimit = deps.recentCommentsLimit ?? 20;
     this.maxInflightPerFolder = deps.maxInflightPerFolder ?? MAX_INFLIGHT_PER_FOLDER;
     // Default fallback uses the LEGACY linear definition so unconfigured
     // auto-code (no per-folder workflow_template setting, no seeded

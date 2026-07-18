@@ -1,17 +1,17 @@
 /**
  * Shared Mustache prompt templates for the shipped v2 workflows.
  *
- * Ticket 01KRWRHFAK7HPQYV8GN72BW2VC — "Auto-code: сократить дефолтные
- * процессы до 3-х". The registry now ships three templates:
+ * Ticket 01KRWRHFAK7HPQYV8GN72BW2VC trimmed the registry from 7
+ * near-duplicate (agent-permutation) templates to base SHAPES; the Mo
+ * Workflows epic extended it to five
+ * flows that differ by STAGE COMPOSITION, not by agent:
  *
  *   1. Plan + plan review + code + code review (FULL_PIPELINE)
- *   2. Code + code review (DEFAULT_AUTOCODE_DEFINITION, in
+ *   2. Code + review + docs + QA (FIX_REVIEW_DOCS_QA)
+ *   3. Code + review + docs (FIX_REVIEW_DOCS)
+ *   4. Code + code review (DEFAULT_AUTOCODE_DEFINITION, in
  *      default-autocode.ts)
- *   3. Code only (CODE_ONLY)
- *
- * The legacy per-shape prompts (bug-fix, pi-fix, spike, docs-only)
- * were removed alongside their definitions — users author bespoke
- * flows in the editor.
+ *   5. Code only (CODE_ONLY)
  */
 
 /** Permissive intake gate — accept-by-default per Editor Model v2
@@ -36,6 +36,9 @@ export const PLAN_PROMPT = [
   '',
   '--- Recent comments ---',
   '{{ticket.recentComments}}',
+  '',
+  '--- Previous auto-code runs of this ticket ---',
+  '{{ticket.priorRuns}}',
   '',
   '{{reopen.reason}}',
 ].join('\n');
@@ -79,7 +82,74 @@ export const IMPLEMENT_PROMPT = [
   'Original ticket:',
   '{{ticket.body}}',
   '',
+  '--- Previous auto-code runs of this ticket ---',
+  '{{ticket.priorRuns}}',
+  '',
   '{{reopen.reason}}',
+].join('\n');
+
+export const DOCS_PROMPT = [
+  'You are the documentation agent for "{{ticket.title}}" ({{ticket.id}}).',
+  'The implementation is done and reviewed — your job is to bring the',
+  "project's documentation in line with what shipped.",
+  '',
+  'Fix-stage summary:',
+  '```',
+  '{{stages.fix.output.summary}}',
+  '```',
+  '',
+  'Review-stage summary:',
+  '```',
+  '{{stages.review.output.summary}}',
+  '```',
+  '',
+  'Files the implementation changed (git diff --stat):',
+  '```',
+  '{{stages.fix.output.diffstat}}',
+  '```',
+  '',
+  'Read the actual diff in this worktree, then update whatever docs it',
+  'touches: README sections, files under docs/, changelogs, user-facing',
+  'guides, inline JSDoc on changed public APIs. Keep the edits focused',
+  'on THIS change — no drive-by rewrites.',
+  '',
+  'If the change genuinely affects no documentation, say so plainly at',
+  'the top of your output ("NO_DOCS_NEEDED: <one-line reason>") and',
+  'exit without editing anything.',
+].join('\n');
+
+export const QA_PROMPT = [
+  'You are the QA agent for "{{ticket.title}}" ({{ticket.id}}).',
+  'Implementation, review, and docs are done — your job is functional',
+  'tests that validate the change through the UI.',
+  '',
+  'Fix-stage summary:',
+  '```',
+  '{{stages.fix.output.summary}}',
+  '```',
+  '',
+  'Review-stage summary:',
+  '```',
+  '{{stages.review.output.summary}}',
+  '```',
+  '',
+  'Files the implementation changed (git diff --stat):',
+  '```',
+  '{{stages.fix.output.diffstat}}',
+  '```',
+  '',
+  'First check how this repo does end-to-end testing (look for',
+  'playwright.config.*, cypress.config.*, an e2e/ or tests/e2e dir).',
+  '',
+  '  - If an e2e framework is set up: write executable specs covering',
+  '    the acceptance criteria + the regression-sensitive paths this',
+  '    change touches, following the existing spec conventions. Run',
+  '    them if the framework allows headless runs.',
+  '  - If there is no e2e setup: write a manual functional-test',
+  '    checklist as a markdown file next to the existing test docs',
+  '    (or under docs/) — concrete steps, expected results, edge cases.',
+  '',
+  'Do NOT modify application code — tests and test docs only.',
 ].join('\n');
 
 export const FEATURE_REVIEW_PROMPT = [
@@ -93,6 +163,11 @@ export const FEATURE_REVIEW_PROMPT = [
   'Implementation summary:',
   '```',
   '{{stages.fix.output.summary}}',
+  '```',
+  '',
+  'Files the implementation changed (git diff --stat):',
+  '```',
+  '{{stages.fix.output.diffstat}}',
   '```',
   '',
   'Write a short reviewer summary covering:',

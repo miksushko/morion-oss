@@ -23,6 +23,15 @@ export const auditRecentTool = defineTool({
   async handler(input, ctx) {
     const limit = input.limit ?? 20;
     const rows = ctx.audit.recent(limit, input.actor);
+    // On workflow_* rows `noteId` carries a workflows.id ULID, not a
+    // note — gate those by the OWNING FOLDER's read permission (same
+    // N4 rationale: workflow activity in a hidden folder must not
+    // leak). Workflows are hard-deleted, so a row whose workflow no
+    // longer resolves passes through like an orphan — the bare ULID
+    // identifies nothing.
+    const workflowFolderStmt = ctx.db.prepare<[string], { folder_id: string }>(
+      'SELECT folder_id FROM workflows WHERE id = ?',
+    );
     // Hide audit entries for notes the caller has no read access to
     // (finding N4, 2026-04-16). Otherwise hidden-folder existence leaks
     // through the audit — an LLM that can't see a note can still observe
@@ -31,6 +40,11 @@ export const auditRecentTool = defineTool({
     // note-scoped so there's nothing to gate.
     return rows.filter((r) => {
       if (r.noteId === null) return true;
+      if (r.action.startsWith('workflow_')) {
+        const wf = workflowFolderStmt.get(r.noteId);
+        if (!wf) return true;
+        return canPerform('read', ctx, { kind: 'folder', folderId: wf.folder_id });
+      }
       return canPerform('read', ctx, { kind: 'note', noteId: r.noteId });
     });
   },

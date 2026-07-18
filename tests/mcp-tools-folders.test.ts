@@ -68,18 +68,42 @@ describe('MCP tools — folders', () => {
   });
 
   describe('folders_delete', () => {
-    it('deletes a folder and unfiles its notes (folderId becomes null)', async () => {
+    it('moves the folder\'s notes to Trash by default', async () => {
       const folder = ctx.tc.folders.create('Doomed');
       const note = (await notesCreateTool.handler(
-        { body: 'orphan-me', folderId: folder.id },
+        { body: 'trash-me', folderId: folder.id },
         ctx.tc,
       )) as Note;
 
-      const result = (await foldersDeleteTool.handler({ id: folder.id }, ctx.tc)) as { ok: boolean };
+      const result = (await foldersDeleteTool.handler({ id: folder.id }, ctx.tc)) as {
+        ok: boolean;
+        trashedNoteCount: number;
+      };
       expect(result.ok).toBe(true);
+      expect(result.trashedNoteCount).toBe(1);
       expect(ctx.tc.folders.getById(folder.id)).toBeNull();
 
-      // Note survives, just unfiled.
+      // Note is soft-deleted (not returned by the default read), but the
+      // row survives in the trash — restorable.
+      const gone = (await notesGetTool.handler({ id: note.id }, ctx.tc)) as Note | null;
+      expect(gone).toBeNull();
+      expect(ctx.tc.notes.getById(note.id, { includeTrashed: true })?.deletedAt).not.toBeNull();
+    });
+
+    it('keepNotes:true preserves notes as unfiled instead of trashing them', async () => {
+      const folder = ctx.tc.folders.create('KeepMine');
+      const note = (await notesCreateTool.handler(
+        { body: 'keep-me', folderId: folder.id },
+        ctx.tc,
+      )) as Note;
+
+      const result = (await foldersDeleteTool.handler(
+        { id: folder.id, keepNotes: true },
+        ctx.tc,
+      )) as { ok: boolean; trashedNoteCount: number };
+      expect(result.ok).toBe(true);
+      expect(result.trashedNoteCount).toBe(0);
+
       const stillThere = (await notesGetTool.handler({ id: note.id }, ctx.tc)) as Note | null;
       expect(stillThere).not.toBeNull();
       expect(stillThere?.folderId).toBeNull();

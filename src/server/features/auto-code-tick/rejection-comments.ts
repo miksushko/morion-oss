@@ -61,7 +61,7 @@ export function buildRejectionCommentBody(
     case 'budget_exhausted':
       return `${REJECTION_COMMENT_PREFIX} — the auto-code monthly budget is exhausted.${detailLine}\n\nTo recover: raise the cap in Settings → Auto-code, OR wait for the monthly reset.`;
     case 'linked_repo_missing':
-      return `${REJECTION_COMMENT_PREFIX} — the folder has no linked git repo path.${detailLine}\n\nTo recover: open Folder Settings → Auto-code and set the **Linked repo path**.`;
+      return `${REJECTION_COMMENT_PREFIX} — the folder's linked git repo path is unset or no longer exists on disk.${detailLine}\n\nTo recover: open Folder Settings → Auto-code and set (or re-point) the **Linked repo path** to an existing git repository.`;
     // Benign / self-resolving — don't spam the ticket.
     case 'auto_code_disabled':
     case 'mo_disabled':
@@ -75,6 +75,48 @@ export function buildRejectionCommentBody(
       // a new rejection doesn't go invisible. Future maintainer should
       // add an explicit case for any new reason they introduce.
       return `${REJECTION_COMMENT_PREFIX} — \`${reason}\`.${detailLine}\n\nThis is an uncommon rejection reason — open the auto-code drawer for details, or report it.`;
+  }
+}
+
+/**
+ * Concise, single-line version of {@link buildRejectionCommentBody} for a
+ * transient UI notification (the toast bar when a user drags a ticket into
+ * `todo` and auto-code can't pick it up). Returns null for the same benign /
+ * self-resolving reasons the comment humanizer stays silent on, so a drag
+ * into a folder where another run is already active doesn't nag.
+ *
+ * The full comment humanizer stays the source of truth for the ticket
+ * thread; this is purely the short "why nothing happened" flash.
+ */
+export function humanizeAutoCodeRejectionShort(
+  reason: string,
+  missingDetails?: readonly string[],
+): string | null {
+  const detail = missingDetails && missingDetails.length > 0 ? ` (${missingDetails[0]})` : '';
+  switch (reason) {
+    case 'linked_repo_missing':
+      return `Auto-code can't run: the folder's linked git repo is unset or missing on disk${detail}. Fix it in Folder Settings → Auto-code.`;
+    case 'agent_unavailable':
+      return `Auto-code can't run: a required CLI agent isn't installed${detail}.`;
+    case 'auto_code_unavailable':
+      return `Auto-code can't run: the engine isn't wired — check Mo is configured and the claude CLI is detected.`;
+    case 'workflow_not_runnable':
+      return `Auto-code can't run: the folder's workflow has a stage the runner can't execute yet${detail}.`;
+    case 'budget_exhausted':
+      return `Auto-code can't run: the monthly budget is exhausted. Raise the cap in Settings → Auto-code.`;
+    case 'preflight_blocked':
+      return `Auto-code can't run: preflight failed${detail}.`;
+    case 'mo_disabled':
+      return `Auto-code can't run: Mo is disabled for this folder.`;
+    // Benign / self-resolving — no toast (mirrors buildRejectionCommentBody).
+    case 'auto_code_disabled':
+    case 'folder_cap_exceeded':
+    case 'already_running':
+    case 'note_not_in_folder':
+    case 'preflight_ineligible':
+      return null;
+    default:
+      return `Auto-code can't run: ${reason}${detail}.`;
   }
 }
 

@@ -39,7 +39,7 @@ interface Ctx {
   settings: SettingsRepository;
 }
 
-function setup(opts?: { isPro?: boolean }): Ctx {
+function setup(): Ctx {
   const handle = openDb({ path: ':memory:' });
   const audit = new AuditLogger(handle.db);
   const notes = new NotesRepository(handle.db, audit);
@@ -56,16 +56,6 @@ function setup(opts?: { isPro?: boolean }): Ctx {
   const indexer = new Indexer(vec, embeddings);
   const findings = new MoPatrolFindingsRepository(handle.db);
   const ledger = new MoSpendLedgerRepository(handle.db);
-
-  if (opts?.isPro) {
-    settings.set('license', {
-      tier: 'pro',
-      email: 'test@example.com',
-      issued_at: Math.floor(Date.now() / 1000),
-      expires_at: null,
-      sig: 'test',
-    });
-  }
 
   const concierge = {
     folderSettings: new ConciergeFolderSettingsRepository(handle.db),
@@ -225,7 +215,7 @@ describe('appendFindings — Phase 5d table integration', () => {
 
 describe('mo_acknowledge_finding — gates + transitions', () => {
   it('returns finding_not_found for an unknown id', async () => {
-    const ctx = setup({ isPro: true });
+    const ctx = setup();
     const result = (await moAcknowledgeFindingTool.handler(
       { findingId: 'does-not-exist', action: 'dismiss' },
       ctx.toolCtx,
@@ -234,7 +224,7 @@ describe('mo_acknowledge_finding — gates + transitions', () => {
   });
 
   it('snooze without snoozeUntilTs returns mo_invalid_input', async () => {
-    const ctx = setup({ isPro: true });
+    const ctx = setup();
     const folder = ctx.folders.create('F');
     ctx.toolCtx.concierge!.folderSettings.update(folder.id, { enabled: true });
     const noteId = mkNoteId(ctx, folder.id, 'A');
@@ -251,7 +241,7 @@ describe('mo_acknowledge_finding — gates + transitions', () => {
   });
 
   it('accept transitions state to accepted', async () => {
-    const ctx = setup({ isPro: true });
+    const ctx = setup();
     const folder = ctx.folders.create('F');
     ctx.toolCtx.concierge!.folderSettings.update(folder.id, { enabled: true });
     const noteId = mkNoteId(ctx, folder.id, 'A');
@@ -267,7 +257,7 @@ describe('mo_acknowledge_finding — gates + transitions', () => {
   });
 
   it('snooze with timestamp persists snoozeUntil', async () => {
-    const ctx = setup({ isPro: true });
+    const ctx = setup();
     const folder = ctx.folders.create('F');
     ctx.toolCtx.concierge!.folderSettings.update(folder.id, { enabled: true });
     const noteId = mkNoteId(ctx, folder.id, 'A');

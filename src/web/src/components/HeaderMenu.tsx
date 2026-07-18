@@ -16,8 +16,8 @@ interface Props {
   onOpenImport?: () => void;
   /** Open the unified Settings popup (epic 01KPGWTJCWVBQCCSQ8NGSB19KQ).
    *  Phase 5 (this commit) — only entry point for app-wide settings.
-   *  Theme / Subscription / MCP perms / Refresh / Check for updates all
-   *  live inside the popup now. */
+   *  Theme / MCP perms / Refresh / Check for updates all live inside
+   *  the popup now. */
   onOpenUnifiedSettings: () => void;
 }
 
@@ -30,9 +30,9 @@ interface Props {
  *   - Review MCP access  → toggle for the V/E/D perm-strip overlay
  *   - Show Archived      → toggle for surfacing archived folders/notes
  *
- * Everything else previously in the gear (Theme inline / Subscription
- * / MCP Settings / Refresh data / Check for updates) moved into the
- * Settings popup tabs.
+ * Everything else previously in the gear (Theme inline / MCP Settings
+ * / Refresh data / Check for updates) moved into the Settings popup
+ * tabs.
  *
  * Menu rendering uses `createPortal` to escape the sidebar's overflow
  * context, mirroring the FolderActionsMenu pattern in Sidebar.tsx so
@@ -104,10 +104,10 @@ export function HeaderMenu({
           >
             {/* Phase 5 (epic 01KPGWTJCWVBQCCSQ8NGSB19KQ) — gear menu
                 trimmed to: Settings (opens unified popup) → Import →
-                Review MCP / Show Archived toggles. Theme / Subscription
-                / MCP Settings / Refresh data / Check for updates ALL
-                moved into the unified Settings popup (General / Billing
-                / MCP Server / General → Refresh / General → About). */}
+                Review MCP / Show Archived toggles. Theme / MCP Settings
+                / Refresh data / Check for updates ALL moved into the
+                unified Settings popup (General / MCP Server / General →
+                Refresh / General → About). */}
             {onOpenUnifiedSettings && (
               <button
                 type="button"

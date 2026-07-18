@@ -10,6 +10,20 @@ import { Markdown } from 'tiptap-markdown';
 import { MorionImage } from '../MorionImage';
 import type { Extensions } from '@tiptap/react';
 
+/**
+ * True only for strings that are unambiguously a URL (explicit scheme) or a
+ * bare email — the set of tokens we want the Link extension to autolink.
+ * Everything else (bare `foo.md`, `docs/plan.md`, `word.tld`) stays plain
+ * text. Exported for the regression test in `tests/editor-autolink.test.ts`.
+ */
+export function isExplicitUrlOrEmail(url: string): boolean {
+  return (
+    /^[a-z][a-z0-9+.-]*:\/\//i.test(url) || // http://, https://, ftp://, app://
+    /^mailto:/i.test(url) ||
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(url) // bare email address
+  );
+}
+
 interface BuildExtensionsOptions {
   /** Live getter for the current note id — passed to MorionImage so paste
    *  / drop uploads always target the active note even though the
@@ -38,9 +52,24 @@ export function buildEditorExtensions(opts: BuildExtensionsOptions): Extensions 
       // shell so we can route through our Tauri IPC (Tauri webview would
       // otherwise navigate itself when you tap an http link). openOnClick
       // stays false so Tiptap doesn't also call window.open in parallel.
+      //
+      // shouldAutoLink: only turn UNAMBIGUOUS URLs (explicit scheme) and
+      // emails into links. linkifyjs' default fuzzy matcher treats any
+      // `word.tld` token as a bare domain — and `.md` is a real ccTLD, so
+      // filenames like `plan.md` / `todo.md` / `CLAUDE_Canonical.md`
+      // (this is a developer's notebook, full of them) were being linkified
+      // on both type and paste. That corrupted copy/paste: on copy the link
+      // marks serialized to `[plan.md](http://plan.md)`, and splitting the
+      // adjacent word forced stray markdown escapes (`CLAUDE_` → `CLAUDE\_`,
+      // because the trailing `_` became a boundary underscore). Requiring an
+      // explicit scheme keeps real links (`https://…`, `mailto:…`) working
+      // while leaving bare filenames and paths as plain text. Governs
+      // linkOnPaste too (extension-link passes shouldAutoLink to its paste
+      // handler).
       link: {
         openOnClick: false,
         autolink: true,
+        shouldAutoLink: isExplicitUrlOrEmail,
         HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
       },
     }),
@@ -75,7 +104,15 @@ export function buildEditorExtensions(opts: BuildExtensionsOptions): Extensions 
       html: false,
       tightLists: true,
       bulletListMarker: '-',
-      linkify: true,
+      // linkify OFF. This is markdown-it's fuzzy autolinker, a SECOND
+      // linkifier independent of the Link extension's `shouldAutoLink`
+      // (above). It fires whenever markdown TEXT is parsed — on paste (via
+      // transformPastedText) and on note load — and turned bare filename
+      // tokens like `Claude.md` / `Agents.md` into `[Claude.md](http://…)`
+      // links (`.md` reads as a ccTLD). Explicit CommonMark links
+      // (`[x](url)`, `<https://…>`) are core syntax and still parse; only
+      // the fuzzy bare-token guessing is disabled.
+      linkify: false,
       breaks: false,
       transformPastedText: true,
       transformCopiedText: true,

@@ -9,8 +9,7 @@ import {
 
 /**
  * Single-note CRUD — read by id + create + update + soft-delete +
- * permanent purge + restore. Free-tier kanban quota gates are enforced
- * inline on create / patch into a kanban folder.
+ * permanent purge + restore.
  *
  * Title is derived from the first line of body by the repo — the
  * web UI never sends it. The shared `noteCreateSchema` still

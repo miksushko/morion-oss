@@ -45,6 +45,11 @@ export interface ConciergeFolderSettings {
    * Claude Code → Codex → Mo loop. Pro-gated. Requires
    * `linkedRepoPath` non-null + Mo `enabled` to actually run. */
   autoCodeEnabled: boolean;
+  /** Per-folder cap on concurrent in-flight auto-code runs. Overrides
+   * the workspace default (MAX_INFLIGHT_PER_FOLDER = 5) when set; the
+   * workflow orchestrator's admission gate reads it. NULL = use the
+   * workspace default. Set in the FolderSettingsDialog "Auto-code" tab. */
+  autoCodeConcurrency: number | null;
   /** Free-text per-folder list of generic terms the user does NOT
    * want Tier 1 to coin as topic ids (e.g. "task management",
    * "agile", "workflow management" for Morion Features). The Tier 1

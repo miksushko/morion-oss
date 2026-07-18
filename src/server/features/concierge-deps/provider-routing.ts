@@ -64,7 +64,9 @@ export function buildAgentApiKeyEnv(
   return env;
 }
 
-export function readBackend(host: ConciergeDepsHost): ConciergeBackend {
+export function readBackend(
+  host: Pick<ConciergeDepsHost, 'settings'>,
+): ConciergeBackend {
   const raw = host.settings.get<string>('concierge.backend', DEFAULT_BACKEND);
   // Allowlist mirrors the `ConciergeBackend` union — adding a backend
   // means one more entry here AND in BACKEND_CONFIGS /

@@ -31,6 +31,14 @@ export function listKanban(
   if (!filters.includeArchived) {
     conditions.push('archived_at IS NULL');
   }
+  // Exclude `mo:*` system notes (catalog / cluster / risks / patrol-log)
+  // by default — this was the one `list()`-style read path missing the
+  // mo-system filter, so `tasks_list` (and the UI board) leaked machine
+  // indices as if they were kanban cards, drowning real tasks on a
+  // Mo-indexed folder. Part of the 7-layer defence — see read.ts.
+  if (!filters.includeMoSystem) {
+    conditions.push("(source IS NULL OR source NOT LIKE 'mo:%')");
+  }
 
   if (filters.status) {
     conditions.push('status = ?');

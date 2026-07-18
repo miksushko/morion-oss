@@ -28,7 +28,15 @@ export const MO_INDEXING_TIER1_MODEL = 'mistralai/mistral-nemo';
 export const MO_INDEXING_TIER1_FALLBACK = 'meta-llama/llama-3.1-8b-instruct';
 export const MO_INDEXING_TIER2_MODEL = 'qwen/qwen3-235b-a22b-2507';
 export const MO_INDEXING_TIER2_FALLBACK = 'mistralai/mistral-small-24b-instruct-2501';
-export const MO_INDEXING_REQUIRED_BACKEND = 'openrouter';
+/**
+ * The backend whose Mo indexing / gather pipeline ships curated built-in
+ * model defaults (`MO_INDEXING_TIER1_MODEL` etc.). Mo runs on ANY
+ * configured backend, but only this one works with zero model config —
+ * every other backend requires the user to set tier1 + tier2 explicitly
+ * (vendor ids go stale + OpenRouter's namespaced ids 404 on direct APIs,
+ * per the "no hardcoded model defaults" rule).
+ */
+export const MO_INDEXING_DEFAULTS_BACKEND = 'openrouter';
 /**
  * Topic-hygiene proposer is a separate model pick — its job is
  * one-shot semantic dedup of a list of cluster ids, which benefits

@@ -69,7 +69,7 @@ export function MCPPermissionsDialog({ target, onSaved, onClose }: Props) {
       onClose();
     } catch (e) {
       // Strip "PUT /api/foo failed: NNN: " wrapper so the user sees the
-      // actual server message ("pro_required" etc.).
+      // actual server message.
       const raw = (e as Error).message ?? String(e);
       setError(raw.replace(/^[A-Z]+ \/[^\s]+ failed: \d+: ?/, ''));
     } finally {

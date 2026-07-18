@@ -121,9 +121,33 @@ export function humanizeFailureReason(raw: string | null): HumanFailureReason {
     };
   }
 
+  // Agent produced no parseable result envelope. The cli adapter
+  // emits this when the agent exits without a decodable
+  // `--output-format json` envelope (claude) / structured result.
+  // Common causes: a malformed or oversized stage instruction (e.g.
+  // a whole skill pasted into the stage's Agent Instruction), or the
+  // agent isn't authenticated. Must be matched BEFORE the budget
+  // branch — the raw text echoes the prompt, which often contains the
+  // word "budget" and used to be mislabelled as a budget cap.
+  if (trimmed.startsWith('parse_failed')) {
+    return {
+      headline: 'Auto-code stopped: the agent produced no parseable output',
+      detail: 'The cli agent exited without a valid result. Most often the stage instruction is malformed or huge (e.g. a whole skill pasted into the stage\'s Agent Instruction), or the agent isn\'t logged in. Check the stage in **Folder Settings → Workflows** and the agent\'s auth, then re-drag the ticket to `todo`.',
+      raw: trimmed,
+    };
+  }
+
   // Budget guard fired — Mo or cli_agent stage exhausted its
-  // per-stage / workspace cap.
-  if (trimmed.startsWith('budget_exhausted') || trimmed.includes('budget')) {
+  // per-stage / workspace cap. Match the SPECIFIC sentinels only,
+  // never a bare `includes('budget')`: the raw text frequently
+  // carries the word "budget" for unrelated reasons (a prompt echo,
+  // a pasted skill mentioning "monthly budget") and the substring
+  // match used to shadow the real failure reason.
+  if (
+    trimmed.startsWith('budget_exhausted') ||
+    trimmed.startsWith('budget_guard_denied') ||
+    trimmed.startsWith('Mo monthly budget exhausted')
+  ) {
     return {
       headline: 'Auto-code stopped: budget cap reached',
       detail: 'Either the per-stage budget set in the workflow OR the workspace-wide Mo / Auto-code monthly cap is exhausted. Bump the cap in **Settings → Limits** or wait for the monthly reset.',

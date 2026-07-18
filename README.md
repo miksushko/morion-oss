@@ -144,9 +144,11 @@ Grouped by domain:
 - **Mo agent (`mo_*`):** deep-research context gather (`mo_get_context`,
   `mo_ask`), hybrid search (`mo_search`), workspace memory (`mo_remember` /
   `mo_forget`), plus index-maintenance helpers. Mo is free — enable it per
-  folder and bring your own **OpenRouter** key: the context-gather + indexing
-  engine is built on the OpenRouter model lineup today (wider backend support
-  is on the roadmap). `mo_search` needs no LLM — it's local hybrid search.
+  folder and bring your own LLM key. It runs on any configured backend
+  (OpenRouter / OpenAI / Anthropic / Groq / local Ollama); **OpenRouter** ships
+  built-in model defaults so it works with zero extra config, while the other
+  backends need you to set the pipeline tier1 + tier2 models in Settings → Mo.
+  `mo_search` needs no LLM — it's local hybrid search.
 
 Every MCP mutation writes to `audit_log` with the calling client name
 (`mcp:<client>`).
@@ -182,8 +184,9 @@ separate repo and distributed from morion.ai.
   with frontmatter.
 - No cloud, no account, no telemetry.
 - Loopback-only HTTP; search + embeddings run in-process, fully offline (the
-  embedding model loads once, then no network). Mo's LLM context engine
-  currently needs an OpenRouter key.
+  embedding model loads once, then no network). Mo's LLM context engine needs a
+  provider key for whichever backend you pick — or point it at a local Ollama
+  server to stay fully offline there too.
 
 ## Building & testing
 

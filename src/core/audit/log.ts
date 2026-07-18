@@ -9,6 +9,12 @@ import type { NoteStatus } from '../notes/types.js';
 // row. Comment create/update are evidenced by the row itself (updated_at
 // is non-null on edit), so only delete gets an audit row. Same shape as
 // other single-note actions; status_from/to remain NULL.
+//
+// The Mo Workflows epic adds the workflow_*
+// actions for MCP mutations of Auto-code workflow definitions. On those
+// rows `note_id` carries the `workflows.id` ULID (the column is a plain
+// TEXT with no FK — it acts as a generic subject id here; the
+// `audit_recent` LEFT JOIN on notes simply yields a null title).
 export type AuditAction =
   | 'create'
   | 'update'
@@ -17,11 +23,25 @@ export type AuditAction =
   | 'status_change'
   | 'comment_delete'
   | 'archive'
-  | 'unarchive';
+  | 'unarchive'
+  | 'workflow_create'
+  | 'workflow_update'
+  | 'workflow_delete';
 
 export interface AuditEntry {
   noteId: string | null;
   action: AuditAction;
+  actor: string;
+}
+
+export type WorkflowAuditAction =
+  | 'workflow_create'
+  | 'workflow_update'
+  | 'workflow_delete';
+
+export interface WorkflowAuditEntry {
+  workflowId: string;
+  action: WorkflowAuditAction;
   actor: string;
 }
 
@@ -142,6 +162,18 @@ export class AuditLogger {
     }
 
     this.insertStmt.run(entry.noteId, entry.action, entry.actor, now);
+  }
+
+  /**
+   * Mo Workflows — record an MCP mutation of an Auto-code workflow
+   * definition. Dedicated entry point so callers can't accidentally
+   * mix workflow ids into note-action rows: the workflow ULID lands in
+   * `note_id` (generic subject id on workflow_* rows), the action is
+   * one of the workflow_* variants, and none of the update-coalescing
+   * applies (workflow edits are discrete events).
+   */
+  recordWorkflow(entry: WorkflowAuditEntry): void {
+    this.insertStmt.run(entry.workflowId, entry.action, entry.actor, Date.now());
   }
 
   /**

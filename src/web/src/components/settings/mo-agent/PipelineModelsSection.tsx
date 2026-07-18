@@ -24,9 +24,11 @@ import {
  *
  * Active backend determines which set of settings is read / written;
  * the section refreshes on backend switch via a custom event the
- * chat-tier MoProviderKeySection emits on backend save. Hidden entirely
- * (replaced by an explanatory banner) when backend != openrouter — the
- * underlying resolvers are gated to OpenRouter today.
+ * chat-tier MoProviderKeySection emits on backend save. Shown for every
+ * backend (Mo runs on any configured backend). OpenRouter ships curated
+ * built-in tier defaults so its fields are optional; every other backend
+ * REQUIRES tier1 + tier2 to be set (no built-in defaults — vendor ids go
+ * stale and OpenRouter's namespaced ids 404 on direct APIs).
  */
 export function PipelineModelsSection() {
   const [state, setState] = useState<PipelineModelsState | null>(null);
@@ -141,6 +143,16 @@ export function PipelineModelsSection() {
           shows the recommended id (informational only — never a shipped
           default).
         </p>
+        {state.backend !== 'openrouter' && (
+          <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-[10px] text-foreground">
+            <span className="font-medium">{state.backend}</span> has no
+            built-in model defaults — set <span className="font-mono">Tier 1</span>{' '}
+            and <span className="font-mono">Tier 2</span> below (e.g.
+            OpenAI <span className="font-mono">gpt-4o-mini</span> /{' '}
+            <span className="font-mono">gpt-4o</span>) for Mo to run. The other
+            pipelines fall back to these when left empty.
+          </div>
+        )}
         <div className="flex flex-col gap-5">
           {PIPELINE_FIELD_GROUPS.map((group) => (
             <div key={group.title} className="flex flex-col gap-3">
@@ -271,6 +283,21 @@ const PIPELINE_FIELD_GROUPS: Array<{ title: string; fields: FieldSpec[] }> = [
         key: 'mergeResolverFallback',
         label: 'Merge resolver · fallback',
         hint: 'Backup when primary returns leftover conflict markers or refuses. Empty → single-attempt mode (no retry).',
+      },
+    ],
+  },
+  {
+    title: 'Workflow builder',
+    fields: [
+      {
+        key: 'workflowBuilder',
+        label: 'Workflow builder · primary',
+        hint: 'Drafts Auto-code WorkflowDefinition JSON when Mo builds a workflow (mo_build_workflow). Schema-heavy — pick a strong model. Empty → falls back to Tier 2.',
+      },
+      {
+        key: 'workflowBuilderFallback',
+        label: 'Workflow builder · fallback',
+        hint: 'Backup when the primary emits invalid JSON repeatedly. Empty → single-attempt mode (no retry).',
       },
     ],
   },

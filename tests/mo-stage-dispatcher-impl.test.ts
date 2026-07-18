@@ -249,6 +249,56 @@ describe('buildProductionMoStageDispatcher', () => {
     expect(provider.calls.length).toBe(0);
   });
 
+  it('direct predecessor output escapes the 1500-char cap; unrelated stages stay capped', async () => {
+    // "Mo = router, not narrator":
+    // the stage this decision evaluates (inbound edge) must reach Mo
+    // near-fully — a 1500-char slice of a verdict caused unfounded
+    // "insufficient fix" rejects.
+    const NEEDLE_NEAR_END = 'THE-CRUCIAL-THIRD-REVIEW-POINT';
+    const longVerdict = `${'x'.repeat(4_000)}\n${NEEDLE_NEAR_END}`;
+    const OLD_NEEDLE = 'ANCIENT-STAGE-TAIL';
+    const oldOutput = `${'y'.repeat(4_000)}\n${OLD_NEEDLE}`;
+    const provider = new StubProvider(() => ({
+      content: JSON.stringify({ branch: 'review', reason: 'ok "quote"' }),
+    }));
+    const dispatcher = buildProductionMoStageDispatcher({
+      resolveProvider: () => provider,
+      resolveModel: () => 'cheap-tier',
+      budget: s.budget,
+    });
+    const result = await dispatcher.decide(
+      buildInput({
+        stageOutputs: {
+          old_stage: { output: { summary: oldOutput } },
+          fix: { output: { summary: longVerdict } },
+        },
+        graphSnapshot: {
+          schemaVersion: 1,
+          name: 'g',
+          description: '',
+          stages: [
+            { id: 'fix', kind: 'cli_agent', agent: 'claude' },
+            { id: 'old_stage', kind: 'cli_agent', agent: 'claude' },
+            { id: 'mo_after_fix', kind: 'mo_stage' },
+            { id: 'review', kind: 'cli_agent', agent: 'codex' },
+          ],
+          edges: [
+            { from: 'fix', to: 'mo_after_fix', on: 'success' },
+            { from: 'mo_after_fix', to: 'review', on: 'review' },
+          ],
+        } as any,
+      }),
+    );
+    expect(result.ok).toBe(true);
+    const scope = provider.calls[0].messages.map((m) => m.content).join('\n');
+    // Inbound predecessor: full text incl. the tail beyond 1500 chars,
+    // and labelled as the evaluated output.
+    expect(scope).toContain(NEEDLE_NEAR_END);
+    expect(scope).toContain('direct predecessor');
+    // Non-inbound stage keeps the tight cap — its tail is elided.
+    expect(scope).not.toContain(OLD_NEEDLE);
+  });
+
   it('defers to workspace default when modelOverride.useDefault is true', async () => {
     const observed: string[] = [];
     const provider = new StubProvider(() => ({

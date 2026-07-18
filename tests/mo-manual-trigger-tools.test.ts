@@ -45,7 +45,7 @@ interface Ctx {
   settings: SettingsRepository;
 }
 
-function setup(opts?: { isPro?: boolean }): Ctx {
+function setup(): Ctx {
   const handle = openDb({ path: ':memory:' });
   const audit = new AuditLogger(handle.db);
   const notes = new NotesRepository(handle.db, audit);
@@ -66,15 +66,6 @@ function setup(opts?: { isPro?: boolean }): Ctx {
   const clusterQueue = new MoClusterQueueRepository(handle.db);
   const ledger = new MoSpendLedgerRepository(handle.db);
 
-  if (opts?.isPro) {
-    settings.set('license', {
-      tier: 'pro',
-      email: 'test@example.com',
-      issued_at: Math.floor(Date.now() / 1000),
-      expires_at: null,
-      sig: 'test',
-    });
-  }
 
   const concierge = {
     folderSettings: new ConciergeFolderSettingsRepository(handle.db),
@@ -112,7 +103,7 @@ function setup(opts?: { isPro?: boolean }): Ctx {
 
 describe('mo_reclassify — gates + replace contract', () => {
   it('returns note_not_found for an unknown note id', async () => {
-    const ctx = setup({ isPro: true });
+    const ctx = setup();
     const result = (await moReclassifyTool.handler(
       { noteId: 'does-not-exist', clusters: ['anywhere'] },
       ctx.toolCtx,
@@ -121,7 +112,7 @@ describe('mo_reclassify — gates + replace contract', () => {
   });
 
   it('replaces all assignments with source=user, marks old + new clusters dirty', async () => {
-    const ctx = setup({ isPro: true });
+    const ctx = setup();
     const folder = ctx.folders.create('F');
     ctx.toolCtx.concierge!.folderSettings.update(folder.id, { enabled: true });
     const note = ctx.notes.create(
@@ -168,7 +159,7 @@ describe('mo_reclassify — gates + replace contract', () => {
   });
 
   it('empty list clears all assignments + queues dirty for every prior cluster', async () => {
-    const ctx = setup({ isPro: true });
+    const ctx = setup();
     const folder = ctx.folders.create('F');
     ctx.toolCtx.concierge!.folderSettings.update(folder.id, { enabled: true });
     const note = ctx.notes.create(
@@ -193,7 +184,7 @@ describe('mo_reclassify — gates + replace contract', () => {
 
 describe('mo_regenerate_cluster — gates + backend gate', () => {
   it('returns mo_backend_not_openrouter when backend is not configured for indexing', async () => {
-    const ctx = setup({ isPro: true });
+    const ctx = setup();
     const folder = ctx.folders.create('F');
     ctx.toolCtx.concierge!.folderSettings.update(folder.id, { enabled: true });
     // backend unset → readBackend returns DEFAULT_BACKEND (groq) → not openrouter.
@@ -207,7 +198,7 @@ describe('mo_regenerate_cluster — gates + backend gate', () => {
 
 describe('mo_patrol — gates + backfill enqueue', () => {
   it('mode=backfill enqueues every eligible note in the folder', async () => {
-    const ctx = setup({ isPro: true });
+    const ctx = setup();
     const folder = ctx.folders.create('F');
     ctx.toolCtx.concierge!.folderSettings.update(folder.id, { enabled: true });
     // Set backend to something that gates indexing OFF so the
@@ -243,7 +234,7 @@ describe('mo_patrol — gates + backfill enqueue', () => {
   });
 
   it('returns gated_off tickStatus when backend is not openrouter', async () => {
-    const ctx = setup({ isPro: true });
+    const ctx = setup();
     const folder = ctx.folders.create('F');
     ctx.toolCtx.concierge!.folderSettings.update(folder.id, { enabled: true });
     ctx.settings.set('concierge.backend', 'groq');

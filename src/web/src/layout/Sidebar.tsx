@@ -47,7 +47,7 @@ interface Props {
   onRenameFolder: (id: string, name: string) => Promise<void> | void;
   onDeleteFolder: (
     id: string,
-    opts?: { purgeNotes?: boolean },
+    opts?: { keepNotes?: boolean },
   ) => Promise<void> | void;
   onDuplicateFolder: (id: string) => Promise<void> | void;
   onMoveFolder: (id: string, direction: 'up' | 'down') => Promise<void> | void;

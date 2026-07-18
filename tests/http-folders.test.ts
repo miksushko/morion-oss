@@ -76,32 +76,8 @@ describe('HTTP /api/folders', () => {
   });
 
   // Ticket 01KQFDZB7C61F5EMKQEKYPP3YA
-  describe('DELETE /api/folders/:id with optional purgeNotes', () => {
-    it('default (no purgeNotes) unfiles notes — they survive at root', async () => {
-      const work = (await (
-        await ctx.app.request('/api/folders', json({ name: 'Work' }))
-      ).json()) as { id: string };
-      const n1 = (await (
-        await ctx.app.request('/api/notes', json({ body: 'survivor', folderId: work.id }))
-      ).json()) as { id: string };
-
-      const del = await ctx.app.request(`/api/folders/${work.id}`, {
-        method: 'DELETE',
-      });
-      expect(del.status).toBe(200);
-      const body = (await del.json()) as { ok: boolean; deletedNoteCount: number };
-      expect(body.ok).toBe(true);
-      expect(body.deletedNoteCount).toBe(0);
-
-      // Note still exists, no folder, not deleted.
-      const noteRes = await ctx.app.request(`/api/notes/${n1.id}`);
-      expect(noteRes.status).toBe(200);
-      const note = (await noteRes.json()) as { folderId: string | null; deletedAt: number | null };
-      expect(note.folderId).toBeNull();
-      expect(note.deletedAt).toBeNull();
-    });
-
-    it('purgeNotes=true soft-deletes notes (folderId stays for trash restore context)', async () => {
+  describe('DELETE /api/folders/:id with optional keepNotes', () => {
+    it('default moves the folder\'s notes to Trash (soft-delete, restorable)', async () => {
       const work = (await (
         await ctx.app.request('/api/folders', json({ name: 'Work' }))
       ).json()) as { id: string };
@@ -112,22 +88,18 @@ describe('HTTP /api/folders', () => {
         await ctx.app.request('/api/notes', json({ body: 'doomed-2', folderId: work.id }))
       ).json()) as { id: string };
 
-      const del = await ctx.app.request(
-        `/api/folders/${work.id}?purgeNotes=true`,
-        { method: 'DELETE' },
-      );
+      const del = await ctx.app.request(`/api/folders/${work.id}`, {
+        method: 'DELETE',
+      });
       expect(del.status).toBe(200);
-      const body = (await del.json()) as { ok: boolean; deletedNoteCount: number };
+      const body = (await del.json()) as { ok: boolean; trashedNoteCount: number };
       expect(body.ok).toBe(true);
-      expect(body.deletedNoteCount).toBe(2);
+      expect(body.trashedNoteCount).toBe(2);
 
-      // Notes are soft-deleted: GET returns 404 (deleted_at filter).
-      const r1 = await ctx.app.request(`/api/notes/${n1.id}`);
-      expect(r1.status).toBe(404);
-      const r2 = await ctx.app.request(`/api/notes/${n2.id}`);
-      expect(r2.status).toBe(404);
-
-      // But they show up in trash list (restorable).
+      // Notes are soft-deleted: GET returns 404 (deleted_at filter)...
+      expect((await ctx.app.request(`/api/notes/${n1.id}`)).status).toBe(404);
+      expect((await ctx.app.request(`/api/notes/${n2.id}`)).status).toBe(404);
+      // ...but restorable from Trash.
       const trash = (await (
         await ctx.app.request('/api/notes/trash')
       ).json()) as Array<{ id: string }>;
@@ -136,17 +108,41 @@ describe('HTTP /api/folders', () => {
       expect(trashIds).toContain(n2.id);
     });
 
-    it('purgeNotes=true on empty folder returns deletedNoteCount=0', async () => {
-      const empty = (await (
-        await ctx.app.request('/api/folders', json({ name: 'Empty' }))
+    it('keepNotes=true unfiles notes — they survive at root instead of being trashed', async () => {
+      const work = (await (
+        await ctx.app.request('/api/folders', json({ name: 'Work' }))
       ).json()) as { id: string };
+      const n1 = (await (
+        await ctx.app.request('/api/notes', json({ body: 'survivor', folderId: work.id }))
+      ).json()) as { id: string };
+
       const del = await ctx.app.request(
-        `/api/folders/${empty.id}?purgeNotes=true`,
+        `/api/folders/${work.id}?keepNotes=true`,
         { method: 'DELETE' },
       );
       expect(del.status).toBe(200);
-      const body = (await del.json()) as { deletedNoteCount: number };
-      expect(body.deletedNoteCount).toBe(0);
+      const body = (await del.json()) as { ok: boolean; trashedNoteCount: number };
+      expect(body.ok).toBe(true);
+      expect(body.trashedNoteCount).toBe(0);
+
+      // Note still exists, no folder, not deleted.
+      const noteRes = await ctx.app.request(`/api/notes/${n1.id}`);
+      expect(noteRes.status).toBe(200);
+      const note = (await noteRes.json()) as { folderId: string | null; deletedAt: number | null };
+      expect(note.folderId).toBeNull();
+      expect(note.deletedAt).toBeNull();
+    });
+
+    it('empty folder returns trashedNoteCount=0', async () => {
+      const empty = (await (
+        await ctx.app.request('/api/folders', json({ name: 'Empty' }))
+      ).json()) as { id: string };
+      const del = await ctx.app.request(`/api/folders/${empty.id}`, {
+        method: 'DELETE',
+      });
+      expect(del.status).toBe(200);
+      const body = (await del.json()) as { trashedNoteCount: number };
+      expect(body.trashedNoteCount).toBe(0);
     });
 
     it('downloadable skill bundle endpoints serve manifest + ZIP + individual files', async () => {
@@ -194,7 +190,7 @@ describe('HTTP /api/folders', () => {
       expect(body.error).toBe('invalid_path');
     });
 
-    it('mo:* system notes are hard-deleted with the folder, NOT trashed (regardless of purgeNotes flag)', async () => {
+    it('mo:* system notes are hard-deleted with the folder, NOT trashed (regardless of keepNotes flag)', async () => {
       const work = (await (
         await ctx.app.request('/api/folders', json({ name: 'WorkMo' }))
       ).json()) as { id: string };
@@ -215,15 +211,14 @@ describe('HTTP /api/folders', () => {
       });
       expect(del.status).toBe(200);
 
-      // mo:* note is GONE (not in trash, not anywhere).
+      // mo:* note is GONE (not in trash, not anywhere)...
       const trash = (await (await ctx.app.request('/api/notes/trash')).json()) as Array<{ id: string }>;
       expect(trash.map((t) => t.id)).not.toContain(moNoteId);
       const moRow = ctx.notes.getById(moNoteId);
       expect(moRow).toBeNull();
-      // Regular user note survived unfiled (no purgeNotes flag).
-      const userAlive = ctx.notes.getById(userNote.id);
-      expect(userAlive?.folderId).toBeNull();
-      expect(userAlive?.deletedAt).toBeNull();
+      // ...while the regular user note is soft-deleted to Trash (new
+      // default), restorable — not hard-deleted like the mo:* note.
+      expect(trash.map((t) => t.id)).toContain(userNote.id);
     });
   });
 });

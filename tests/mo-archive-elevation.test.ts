@@ -44,7 +44,7 @@ interface Ctx {
   toolCtx: ToolContext;
 }
 
-function setup(opts: { actor: string; isPro?: boolean; moEnabledFolderId?: string }): Ctx {
+function setup(opts: { actor: string; moEnabledFolderId?: string }): Ctx {
   const handle = openDb({ path: ':memory:' });
   const audit = new AuditLogger(handle.db);
   const notes = new NotesRepository(handle.db, audit);
@@ -63,15 +63,6 @@ function setup(opts: { actor: string; isPro?: boolean; moEnabledFolderId?: strin
   const clusters = new NoteMoClustersRepository(handle.db);
   const moMetadataVec = new MoMetadataVecRepository(handle.db, handle.hasVec);
 
-  if (opts.isPro) {
-    settings.set('license', {
-      tier: 'pro',
-      email: 't@example.com',
-      issued_at: Math.floor(Date.now() / 1000),
-      expires_at: null,
-      sig: 'test',
-    });
-  }
 
   const concierge = {
     folderSettings: new ConciergeFolderSettingsRepository(handle.db),
@@ -160,7 +151,7 @@ describe('toMoInternalCtx — owner-level elevation contract', () => {
 describe('mo_search — surfaces archived notes for any MCP caller (Mo elevates internally)', () => {
   let ctx: Ctx;
   beforeEach(() => {
-    ctx = setup({ actor: 'mcp:claude-code', isPro: true });
+    ctx = setup({ actor: 'mcp:claude-code' });
   });
 
   it('returns archived note via mo_search even when caller is mcp:claude-code', async () => {

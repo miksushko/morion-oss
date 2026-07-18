@@ -213,6 +213,31 @@ export const autocodeMergeApi = {
       | { ok: true; removed: boolean; path?: string; reason?: string }
       | { ok: false; error: string; message?: string };
   },
+  /** Stop an in-flight auto-code run — fans a cancel across both engines
+   *  (legacy queue + workflow_runs), SIGTERMing the live cli_agent so it
+   *  stops spending. Powers the RunStatusBar "Stop" button. Idempotent. */
+  cancelAutoCodeRun: async (
+    runId: string,
+  ): Promise<
+    | { ok: true; summary?: unknown }
+    | { ok: false; error: string; message?: string }
+  > => {
+    const token = getApiToken();
+    const res = await fetch(
+      getApiBaseSync() +
+        `/api/auto-code/runs/${encodeURIComponent(runId)}/cancel`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'X-Morion-Token': token } : {}),
+        },
+      },
+    );
+    return (await res.json()) as
+      | { ok: true; summary?: unknown }
+      | { ok: false; error: string; message?: string };
+  },
   /** Probe trunk for mid-merge state. Powers the drawer-level
    *  "Resume / Abort" guard so the user doesn't click a regular
    *  Merge button against a repo that already has MERGE_HEAD set. */

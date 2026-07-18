@@ -7,6 +7,7 @@ import {
 } from '../../../core/auto-code/preflight.js';
 import { WorkflowRunsRepository } from '../../../core/auto-code/workflows/runs-repository.js';
 import { WorkflowRunner } from '../../../core/auto-code/workflows/runner.js';
+import { getOrCreateWorkflowRunner } from './runner-singleton.js';
 import { WorkflowOrchestrator } from '../../../core/auto-code/workflows/workflow-orchestrator.js';
 import { buildProductionMoStageDispatcher } from '../../../core/auto-code/workflows/mo-stage-dispatcher-impl.js';
 import { buildProductionMoMessengerDispatcher } from '../../../core/auto-code/workflows/mo-messenger-dispatcher.js';
@@ -94,7 +95,13 @@ export async function buildWorkflowOrchestrator(
       })
     : null;
 
-  const runner = new WorkflowRunner({
+  // Process-singleton per DB — a cancel from ANY later request must reach
+  // the live run's adapter handle, which lives in this runner's in-memory
+  // `states` map. See runner-singleton.ts.
+  // On a cache hit the freshly-built deps below are discarded; they are
+  // cheap, side-effect-free closures that resolve provider/model/binaries
+  // live per call anyway, so the cached runner's originals stay correct.
+  const runner = getOrCreateWorkflowRunner(toolCtx.db, () => new WorkflowRunner({
     repo: runsRepo,
     adapterFactory,
     transcriptDir,
@@ -118,7 +125,7 @@ export async function buildWorkflowOrchestrator(
       runsRepo,
       moMessengerDispatcher,
     }),
-  });
+  }));
 
   return new WorkflowOrchestrator({
     db: toolCtx.db,

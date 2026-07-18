@@ -1,6 +1,6 @@
 {
   "name": "morion",
-  "version": "1.4.12",
+  "version": "1.5.4",
   "description": "A local notebook that doubles as an MCP memory server for any LLM.",
   "type": "module",
   "license": "Apache-2.0",

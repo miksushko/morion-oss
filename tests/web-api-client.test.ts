@@ -144,12 +144,12 @@ describe('web api client — URL + query-string assembly', () => {
     expect(lastCall(fetchMock).url).toBe('/api/folders?includeArchived=1');
   });
 
-  it('deleteFolder appends purgeNotes flag when requested', async () => {
-    fetchMock.mockImplementation(async () => jsonResponse({ ok: true, deletedNoteCount: 0 }));
+  it('deleteFolder appends keepNotes flag when requested', async () => {
+    fetchMock.mockImplementation(async () => jsonResponse({ ok: true, trashedNoteCount: 0 }));
     await api.deleteFolder('f1');
     expect(lastCall(fetchMock).url).toBe('/api/folders/f1');
-    await api.deleteFolder('f1', { purgeNotes: true });
-    expect(lastCall(fetchMock).url).toBe('/api/folders/f1?purgeNotes=true');
+    await api.deleteFolder('f1', { keepNotes: true });
+    expect(lastCall(fetchMock).url).toBe('/api/folders/f1?keepNotes=true');
   });
 
   it('search encodes the query parameter', async () => {
