@@ -3,11 +3,33 @@ import { MoreVertical, Check } from 'lucide-react';
 
 import { api } from '../../lib/api';
 import type { AutoCodeWorkflowFull } from '../../lib/api';
+import { ApiError } from '../../lib/api/http';
 import { cn } from '../../lib/cn';
 import {
   WorkflowCanvasEditor,
   type CanvasDefinition,
 } from '../WorkflowCanvasEditor';
+
+/**
+ * Turn a save failure into a human message. A 422 schema-validation
+ * failure carries the full `issues[]` (e.g. missing Process Start /
+ * reject sink / complete sink) — render them as a checklist instead of
+ * the first issue wrapped in `PUT …/workflows/<id> failed: 422:`
+ * boilerplate (bug 01KVJ3G3MQRBN9K7TJ8975RN89).
+ */
+function formatSaveError(e: unknown): string {
+  if (e instanceof ApiError && e.issues && e.issues.length > 0) {
+    const lines = e.issues.map((i) => {
+      const where =
+        i.path && i.path !== 'definition' && i.path !== 'stages'
+          ? ` (${i.path})`
+          : '';
+      return `• ${i.message ?? 'invalid'}${where}`;
+    });
+    return `Can't save this workflow — fix:\n${lines.join('\n')}`;
+  }
+  return (e as Error).message;
+}
 
 /**
  * Main editor pane of the AutoCode popup — name input + Save / More
@@ -182,7 +204,7 @@ export function WorkflowPane({
       setDirty(false);
       await onSaved();
     } catch (e) {
-      setError((e as Error).message);
+      setError(formatSaveError(e));
     } finally {
       setSaving(false);
     }
@@ -351,7 +373,7 @@ export function WorkflowPane({
         </button>
       </div>
       {error && (
-        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-2 text-[11px] text-destructive">
+        <div className="whitespace-pre-line rounded-md border border-destructive/50 bg-destructive/10 p-2 text-[11px] text-destructive">
           {error}
         </div>
       )}

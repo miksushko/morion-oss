@@ -55,9 +55,28 @@ export function MoStageBody({
     <div className="space-y-2">
       <div className="rounded-md border border-fuchsia-500/30 bg-fuchsia-500/10 p-2 text-[10px] text-fuchsia-700 dark:text-fuchsia-300">
         {stage.isStart
-          ? 'Process Start Mo — the workflow entry node. Pinned to one per definition; you can move it but not duplicate or delete it.'
-          : 'Mo decision stage. Mo reads the ticket context + your instruction + the branches list, picks one branch, and the runner advances along the matching outbound edge. DAG runtime lands with Phase 4.'}
+          ? 'Process Start Mo — the workflow entry node. Exactly one per definition; you can move it but not duplicate or delete it.'
+          : 'Mo decision stage. Mo reads the ticket context + your instruction + the branches list, picks one branch, and the runner advances along the matching outbound edge.'}
       </div>
+      <label className="flex items-center gap-2 text-[11px] text-foreground">
+        <input
+          type="checkbox"
+          checked={stage.isStart === true}
+          // Checking promotes this mo_stage to the Process Start (the
+          // canvas hook clears isStart on every other mo_stage). A
+          // definition needs exactly one start, so the current start
+          // can't be un-checked directly — move it by marking a
+          // different Mo stage instead.
+          disabled={disabled || stage.isStart === true}
+          onChange={(e) => {
+            if (e.target.checked) onPatch({ isStart: true });
+          }}
+          className="h-3.5 w-3.5"
+        />
+        {stage.isStart
+          ? 'This is the Process Start (workflow entry)'
+          : 'Make this the Process Start (moves the entry here)'}
+      </label>
       <label className="flex items-center gap-2 text-[11px] text-foreground">
         <input
           type="checkbox"

@@ -294,7 +294,21 @@ export function useWorkflowCanvas({
           | { stage?: CanvasStage }
           | undefined)?.stage ?? null;
       const next = curr.map((n) => {
-        if (n.id !== selectedId) return n;
+        if (n.id !== selectedId) {
+          // Mutual exclusion for the Process Start marker: promoting
+          // the selected mo_stage to isStart clears it on every other
+          // mo_stage, so the schema's "exactly one isStart" invariant
+          // always holds (bug 01KVJ3G3MQRBN9K7TJ8975RN89 — there was no
+          // UI to move the start; now the MoStageBody toggle does).
+          if (patch.isStart === true) {
+            const other = (n.data as { stage?: CanvasStage } | undefined)
+              ?.stage;
+            if (other && other.kind === 'mo_stage' && other.isStart) {
+              return { ...n, data: { stage: { ...other, isStart: false } } };
+            }
+          }
+          return n;
+        }
         const stage = (n.data as { stage: CanvasStage }).stage;
         const merged = { ...stage, ...patch } as CanvasStage;
         // If the user renamed the stage id, update the node id + patch

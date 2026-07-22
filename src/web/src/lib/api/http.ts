@@ -24,6 +24,38 @@ import { getApiBaseSync, getApiToken } from '../env';
  * back to `error` (machine code).
  */
 
+/** Validation issue shape returned by the workflow PUT/POST 422 path
+ *  (`{ path, message }` per failed schema refinement). */
+export interface ApiIssue {
+  path?: string;
+  message?: string;
+}
+
+/**
+ * Error thrown by `fetchOrThrow` on a non-2xx response. Extends `Error`
+ * so existing `(e as Error).message` call sites keep working, but also
+ * carries the structured envelope — notably `issues[]` for 422
+ * schema-validation failures — so a UI can render the full checklist
+ * (e.g. "add a Process Start / reject sink / complete sink") instead of
+ * only the first issue wrapped in HTTP boilerplate.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly issues?: ApiIssue[];
+  constructor(
+    message: string,
+    status: number,
+    opts?: { code?: string; issues?: ApiIssue[] },
+  ) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = opts?.code;
+    this.issues = opts?.issues;
+  }
+}
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetchOrThrow(path, init);
   return (await res.json()) as T;
@@ -47,19 +79,26 @@ export async function fetchOrThrow(path: string, init?: RequestInit): Promise<Re
   });
   if (!res.ok) {
     let detail = '';
-    let envelope: { error?: string; message?: string; issues?: unknown } | null = null;
+    let envelope:
+      | { error?: string; message?: string; issues?: ApiIssue[] }
+      | null = null;
     try {
       envelope = (await res.clone().json()) as {
         error?: string;
         message?: string;
-        issues?: unknown;
+        issues?: ApiIssue[];
       };
       if (envelope?.message) detail = `: ${envelope.message}`;
       else if (envelope?.error) detail = `: ${envelope.error}`;
     } catch {
       // non-JSON body, ignore
     }
-    throw new Error(`${init?.method ?? 'GET'} ${path} failed: ${res.status}${detail}`);
+    const issues = Array.isArray(envelope?.issues) ? envelope!.issues : undefined;
+    throw new ApiError(
+      `${init?.method ?? 'GET'} ${path} failed: ${res.status}${detail}`,
+      res.status,
+      { code: envelope?.error, issues },
+    );
   }
   return res;
 }
