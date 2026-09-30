@@ -1,7 +1,9 @@
 # Contributing to Morion
 
-Thanks for your interest. Morion is the open-source core of a local-first
-notebook + MCP memory server.
+Thanks for your interest. This is Morion Community, the open-source edition of
+Morion: a local-first notebook and kanban board with an MCP server. It takes bug,
+security and compatibility fixes; new features ship in Morion 2.0
+(https://morion.ai).
 
 ## Dev setup
 

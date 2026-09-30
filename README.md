@@ -1,56 +1,65 @@
-# Morion
+# Morion Community
 
-**Your notebook. Your task board. An auto-code harness. All local, all in one.**
+**The open-source edition of Morion: a local notebook and kanban board that your
+AI agents read and write over MCP.**
 
-Morion is a local-first workspace that speaks MCP. You write notes by hand in a
-real notes app and organize work on a kanban board — and any LLM agent (Claude
-Code, Cursor, Codex, Cline, Zed, …) reads, searches, and writes the **same
-SQLite file** right alongside you. Every AI edit is logged with the agent's name.
+You write notes and move tasks in a real notes app. Claude Code, Codex, Cursor,
+Cline, Zed or any other MCP client reads, searches and writes the **same local
+SQLite file** next to you, and every change an agent makes is logged with its
+name. No account, no cloud: your notes stay on your disk.
 
-Your data lives on your disk, not in the cloud — no account, no per-token
-memory tax. **Free and open source (Apache 2.0).**
+Morion Community runs from source in your browser on localhost and is licensed
+under Apache 2.0.
 
-> **This is the open-source core of Morion.** It runs locally in your browser.
-> Official, code-signed **macOS / Windows desktop builds** are produced by the
-> project owner at **https://morion.ai** — the desktop shell, code signing, and
-> release pipeline live in a separate repo. See `TRADEMARK.md` before
-> redistributing.
+> **Looking for the full Morion?** Morion 2.0 is the desktop app for macOS,
+> Windows and Linux at **[morion.ai](https://morion.ai)**, with the newer
+> engine:
+>
+> - **Smart retrieval.** When an agent takes a ticket or asks a question, Mo
+>   reads it, searches your notes and hands over what the task needs, with the
+>   reason. Nothing to index, nothing to wait for.
+> - **Answers you can check.** Every claim cites the note it came from and
+>   carries a status: decided, proposed, superseded and so on.
+> - **Work packets.** One call gives an agent the ticket, the comments that
+>   still matter, the project brief and the notes to read first.
+> - **Projects, Mo Assistant, and Auto-code** with branching workflows, a human
+>   gate you answer in chat, and a Re-opened column that sends work back with a
+>   reason.
+> - **AI included in Pro, no API key.** A Free plan covers notes, the board and
+>   1,000 MCP calls a month; every account starts with 14 days of Pro, no card.
+>
+> [Download Morion 2.0](https://morion.ai/download)
 
-## Why
+## What Morion Community includes
 
-Three things are broken when you actually work with AI agents:
+1. **Notebook.** A Markdown editor with instant full-text and semantic search.
+   It is a notes app first; open it every day.
+2. **Kanban board.** Turn any folder into a board. You and your agents claim
+   cards, move them through `todo → doing → review → done` and comment on them:
+   a shared queue instead of a chat log.
+3. **MCP server.** Point any MCP client at the stdio server (config below).
+   Per-folder permissions decide what agents may see and change; the audit log
+   records who wrote what.
+4. **Mo chat and indexing** on the earlier engine, with your own model key.
+5. **Auto-code workflows.** A visual editor, five templates, and the `claude`,
+   `codex`, `opencode` and `pi` agents driving build → review → merge loops in
+   your repo.
 
-- **Tickets are too thin.** A one-line task doesn't carry the context an agent
-  needs to do it right.
-- **Chats aren't a workflow.** A scrollback isn't a board you can claim, move,
-  review, and complete.
-- **Memory is stuck inside vendors.** Provider memory is capped, cloud-bound,
-  injected into every turn, and not portable between models.
+### Community and Morion 2.0 side by side
 
-Morion is the layer below all of it: a durable, local workspace that both you
-and your agents author — built to outlive any one tool or model.
+| | Community | Morion 2.0 |
+|---|---|---|
+| Notes, kanban, Markdown import and export | yes | yes |
+| MCP server, per-folder permissions, audit log | yes | yes |
+| One-click agent connection with the Morion skill | no, a config snippet | yes |
+| Mo | chat and indexing with your own key | smart retrieval, cited answers with a status per claim, work packets, Mo Assistant; AI included in Pro |
+| Projects | no | yes |
+| Auto-code | workflows, templates, CLI agents | plus branching runs, a conversational human gate, the Re-opened column |
+| Where it runs | from source, in your browser | desktop app for macOS, Windows and Linux |
+| Account and plans | none | Free, Pro, Enterprise |
+| License | Apache 2.0 | commercial |
 
-## What's inside — one app, four layers
-
-1. **Notebook.** Apple Notes-grade editor, markdown bodies on disk, instant
-   FTS + semantic search. Open it every day; it's a notes app first.
-2. **Task board.** Turn any folder into a kanban board. Humans *and* AI agents
-   claim cards, move them through `todo → doing → review → done`, and comment —
-   a shared queue, not a chat log.
-3. **Mo — the context engine.** The `mo_*` tools gather the right notes,
-   tickets, decisions, and recent activity and hand an agent a packaged brief
-   instead of a thin prompt. (Bring your own LLM key.)
-4. **Auto-code harness.** Compose **build → review → decide → complete** loops
-   that drive CLI agents and merge into your repo. (Optional, bring your own key.)
-
-All four share **one local workspace** — a SQLite database (notes, tasks, tags,
-metadata) plus an `attachments/` folder under your config dir. Only what an
-agent explicitly searches for via `notes_search` enters its context window —
-gigabyte-scale base, full documents, targeted retrieval, no recurring token
-cost. And every MCP write lands in `audit_log` with the calling client name, so
-you always know which assistant wrote what.
-
-## Quickstart (browser-local)
+## Quickstart
 
 ```bash
 git clone https://github.com/miksushko/morion-oss.git
@@ -62,13 +71,11 @@ npm run dev
 ```
 
 `npm run dev` starts the Vite UI (5173) and the Node sidecar (7778) together.
-In browser-local mode there's no auth token — the sidecar binds to loopback and
-treats an unset `MORION_API_TOKEN` as "auth disabled". Your database lives under
-the OS config dir (override with `MORION_CONFIG_DIR`).
+The sidecar binds to loopback only; without `MORION_API_TOKEN` set it runs
+without an auth token. Your database lives under the OS config dir (override
+with `MORION_CONFIG_DIR`).
 
-Prefer a one-click install? Grab a signed desktop build at **https://morion.ai**.
-
-### Production server (no GUI)
+### Server without the UI
 
 ```bash
 npm run build
@@ -78,7 +85,7 @@ node dist/cli/index.js mcp      # MCP stdio, in a separate process
 ```
 
 The HTTP server and the MCP stdio server are separate processes so JSON-RPC on
-stdout stays uncorrupted. They share the same SQLite file via WAL mode.
+stdout stays clean. They share the same SQLite file in WAL mode.
 
 ### Sample vault
 
@@ -86,12 +93,12 @@ stdout stays uncorrupted. They share the same SQLite file via WAL mode.
 node dist/cli/index.js import md sample-vault
 ```
 
-## Connect an LLM client
+## Connect an agent
 
-`morion mcp` is a stdio MCP server — point any MCP-capable client at it (run
+`morion mcp` is a stdio MCP server. Point any MCP client at it (run
 `npm run build` first so `dist/cli/index.js` exists).
 
-### Claude Desktop / Claude Code / Cursor / Cline
+### Claude Desktop, Claude Code, Cursor, Cline
 
 ```json
 {
@@ -105,8 +112,8 @@ node dist/cli/index.js import md sample-vault
 ```
 
 (Claude Desktop: `~/Library/Application Support/Claude/claude_desktop_config.json`;
-Claude Code: `~/.claude/settings.json`; Cursor: `~/.cursor/mcp.json`;
-Cline: the "Edit MCP Settings" panel.)
+Claude Code: `~/.claude.json`; Cursor: `~/.cursor/mcp.json`; Cline: the
+"Edit MCP Settings" panel.)
 
 ### Zed
 
@@ -121,7 +128,7 @@ Cline: the "Edit MCP Settings" panel.)
 }
 ```
 
-### Custom DB location
+### Custom database location
 
 ```json
 "env": { "MORION_CONFIG_DIR": "/Users/you/Documents/morion-data" }
@@ -129,86 +136,83 @@ Cline: the "Edit MCP Settings" panel.)
 
 ## MCP tools
 
-Grouped by domain:
-
 - **Notes:** `notes_search`, `notes_list`, `notes_get`, `notes_create`,
   `notes_update`, `notes_delete`, `notes_append`, `notes_duplicate`,
   `notes_move`, `notes_recent`
-- **Tasks / kanban:** `tasks_list`, `tasks_claim` (atomically take a card),
-  `tasks_move` (advance through columns + comment), `tasks_history`
+- **Tasks:** `tasks_list`, `tasks_claim` (take a card atomically), `tasks_move`
+  (move through columns with a comment), `tasks_history`
 - **Folders:** `folders_list`, `folders_create`, `folders_rename`,
   `folders_delete`, `folders_duplicate`, `folders_move`, `folders_reorder`,
-  `folders_set_view_mode` (flip a folder to a kanban board)
+  `folders_set_view_mode` (turn a folder into a board)
 - **Tags:** `tags_list`, `tags_create`, `tags_update`, `tags_delete`
-- **Audit:** `audit_recent` — "what did Claude write to my notes today?"
-- **Mo agent (`mo_*`):** deep-research context gather (`mo_get_context`,
-  `mo_ask`), hybrid search (`mo_search`), workspace memory (`mo_remember` /
-  `mo_forget`), plus index-maintenance helpers. Mo is free — enable it per
-  folder and bring your own LLM key. It runs on any configured backend
-  (OpenRouter / OpenAI / Anthropic / Groq / local Ollama); **OpenRouter** ships
-  built-in model defaults so it works with zero extra config, while the other
-  backends need you to set the pipeline tier1 + tier2 models in Settings → Mo.
-  `mo_search` needs no LLM — it's local hybrid search.
+- **Audit:** `audit_recent`: "what did my agent write today?"
+- **Mo:** `mo_ask`, `mo_search` (local hybrid search, no model call),
+  `mo_remember` / `mo_forget` and more. Mo needs a model key for the backend
+  you pick in Settings, or a local Ollama server to stay fully offline.
 
-Every MCP mutation writes to `audit_log` with the calling client name
-(`mcp:<client>`).
+Every MCP change writes to `audit_log` with the calling client's name.
 
-## MCP bundle (.mcpb)
+### MCP bundle (.mcpb)
 
 ```bash
 npm run package:mcpb
 ```
 
-Builds a `.mcpb` for the Claude Desktop MCP directory (FTS-only slim runtime,
+Builds a `.mcpb` for the Claude Desktop MCP directory (full-text search only,
 no embedding model).
+
+## Local-first
+
+- Markdown note bodies in one SQLite file, attachments as plain files next to
+  it. To back up or move a workspace, copy the config dir (`MORION_CONFIG_DIR`).
+  `morion export <dir>` writes every note to Markdown with frontmatter.
+- Morion Community sends no telemetry and needs no account.
+- HTTP on loopback only; search and embeddings run in-process and offline after
+  the embedding model's first download.
 
 ## Stack
 
-- **TypeScript** (strict, ESM, Node 20+) end-to-end.
-- **better-sqlite3** + **sqlite-vec** + **FTS5** + RRF hybrid search.
-- **@huggingface/transformers** (ONNX, in-process) for embeddings — no daemon,
-  no API key, no network after first run.
+- **TypeScript** (strict, ESM, Node 20+) end to end.
+- **better-sqlite3** + **sqlite-vec** + **FTS5**, hybrid search with RRF.
+- **@huggingface/transformers** (ONNX, in-process) for embeddings.
 - **@modelcontextprotocol/sdk** over stdio.
 - **hono** + `@hono/node-server` bound to `127.0.0.1`.
 - **React 18** + **Vite** + **Tailwind** + **Tiptap 3** with `tiptap-markdown`.
 
-The desktop app is a Tauri 2 shell wrapping this same core, built from a
-separate repo and distributed from morion.ai.
-
-## Local-first, zero lock-in
-
-- Markdown note bodies in a SQLite database, with image attachments as plain
-  files alongside it — readable by anything, exportable anywhere. To back up or
-  move a workspace, copy the config dir (`MORION_CONFIG_DIR`): the `.db` plus the
-  `attachments/` folder. `morion export <dir>` also dumps every note to markdown
-  with frontmatter.
-- No cloud, no account, no telemetry.
-- Loopback-only HTTP; search + embeddings run in-process, fully offline (the
-  embedding model loads once, then no network). Mo's LLM context engine needs a
-  provider key for whichever backend you pick — or point it at a local Ollama
-  server to stay fully offline there too.
-
-## Building & testing
+## Building and testing
 
 ```bash
-npm run typecheck   # tsc --noEmit (server + core; src/web is built by Vite)
+npm run typecheck   # tsc --noEmit (server + core)
 npm run build       # tsc + vite
 npm test            # vitest
 ```
 
-## Using this in your own product
+## Contributing
 
-You may fork and redistribute the code under Apache 2.0, but you **must
-rebrand** the product name, logo, and domain. The technical identifiers
-(`mo_*` tools, `X-Morion-Token`, `morion://`, `MORION_*`, …) may be kept as-is.
-See **TRADEMARK.md**. Official, code-signed builds are produced only by the
-project owner via morion.ai.
+Issues and pull requests are welcome. Morion Community takes bug, security and
+compatibility fixes; new features ship in Morion 2.0. See `CONTRIBUTING.md` and
+`SECURITY.md`.
+
+## Forks and the Morion name
+
+The code is yours to use, fork and redistribute under Apache 2.0. The name is
+not:
+
+- **Rebrand any fork you distribute.** Do not ship it as "Morion" or "Mo", do
+  not use the Morion or Mo logos or the morion.ai domain, and do not present it
+  as the official app or as affiliated with Morion.
+- You may say your product "is based on Morion" or "is a fork of Morion Community".
+- Technical identifiers such as the `mo_*` tool names, `X-Morion-Token`,
+  `morion://` and `MORION_*` variables may stay as they are.
+
+Official Morion builds come only from [morion.ai](https://morion.ai). Details in
+`TRADEMARK.md`.
 
 ## License
 
-Apache License 2.0 — see `LICENSE`. The Morion / Mo names, logos, the morion.ai
-domain, and the morion-releases repository are reserved; see `NOTICE` and
-`TRADEMARK.md`.
+Apache License 2.0, see `LICENSE`. The Morion and Mo names and logos, the
+morion.ai domain and the official releases repositories are reserved; see
+`NOTICE` and `TRADEMARK.md`.
 
 Third-party open-source dependencies and their licenses are listed in
 `THIRD_PARTY_NOTICES.md` (regenerate with `node scripts/gen-third-party-notices.mjs`).

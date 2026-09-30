@@ -13,8 +13,9 @@ assets. The following are expressly **reserved** by the project owner and are
 - The **Morion** and **Mo** logos, wordmarks, and icon artwork (including the
   icon shipped at `src/web/public/`).
 - The **morion.ai** domain and any subdomains.
-- The **github.com/miksushko/morion-releases** repository and the official,
-  code-signed desktop builds distributed through it.
+- The **github.com/miksushko/morion-releases** and
+  **github.com/miksushko/morion-releases-v2** repositories and the official,
+  code-signed desktop builds distributed through them.
 
 ## What this means for you
 
@@ -41,10 +42,11 @@ You **must**, if you distribute a modified version (a fork) as a product:
 
 ## Official builds
 
-Official, code-signed macOS and Windows builds are produced only by the
-project owner and distributed at https://morion.ai and through
-github.com/miksushko/morion-releases. Builds from any other source are
-unofficial.
+Official, code-signed Morion builds are produced only by the project owner
+and distributed at https://morion.ai and through
+github.com/miksushko/morion-releases (1.x) and
+github.com/miksushko/morion-releases-v2 (2.x). Builds from any other source,
+including builds of Morion Community made by anyone else, are unofficial.
 
 ## Questions
 
